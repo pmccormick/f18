@@ -11,6 +11,7 @@
 #ifndef FORTRAN_RUNTIME_LOCK_H_
 #define FORTRAN_RUNTIME_LOCK_H_
 
+#include "terminator.h"
 #include <pthread.h>
 
 namespace Fortran::runtime {

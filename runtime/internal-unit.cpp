@@ -81,6 +81,36 @@ bool InternalDescriptorUnit<isInput>::Emit(
 }
 
 template<bool isInput>
+const char *InternalDescriptorUnit<isInput>::View(
+    std::size_t &chars, IoErrorHandler &handler) {
+  if constexpr (!isInput) {
+    handler.Crash(
+        "InternalDescriptorUnit<false>::View() called for output statement");
+    chars = 0;
+    return nullptr;
+  }
+  if (currentRecordNumber >= endfileRecordNumber.value_or(0)) {
+    handler.SignalEnd();
+    chars = 0;
+    return nullptr;
+  }
+  char *record{descriptor().template Element<char>(at_)};
+  std::size_t want{std::max<std::size_t>(
+      chars, recordLength.value_or(positionInRecord) - positionInRecord)};
+  auto furthestAfter{std::max(furthestPositionInRecord,
+      positionInRecord + static_cast<std::int64_t>(want))};
+  const char *data{record + positionInRecord};
+  if (furthestAfter > static_cast<std::int64_t>(recordLength.value_or(0))) {
+    handler.SignalEor();
+    furthestAfter = recordLength.value_or(0);
+  }
+  chars = std::max(std::int64_t{0}, furthestAfter - positionInRecord);
+  positionInRecord += chars;
+  furthestPositionInRecord = furthestAfter;
+  return data;
+}
+
+template<bool isInput>
 bool InternalDescriptorUnit<isInput>::AdvanceRecord(IoErrorHandler &handler) {
   if (currentRecordNumber >= endfileRecordNumber.value_or(0)) {
     handler.SignalEnd();

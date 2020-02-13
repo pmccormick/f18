@@ -30,6 +30,11 @@ bool DefaultFormatControlCallbacks::Emit(const char32_t *, std::size_t) {
         "I/O statement");
   return {};
 }
+const char *DefaultFormatControlCallbacks::View(std::size_t &) {
+  Crash(
+      "DefaultFormatControlCallbacks::View called for non-input I/O statement");
+  return {};
+}
 bool DefaultFormatControlCallbacks::AdvanceRecord(int) {
   Crash("DefaultFormatControlCallbacks::AdvanceRecord() called unexpectedly");
   return {};
@@ -50,4 +55,5 @@ bool DefaultFormatControlCallbacks::HandleRelativePosition(std::int64_t) {
 template class FormatControl<InternalFormattedIoStatementState<false>>;
 template class FormatControl<InternalFormattedIoStatementState<true>>;
 template class FormatControl<ExternalFormattedIoStatementState<false>>;
+template class FormatControl<ExternalFormattedIoStatementState<true>>;
 }

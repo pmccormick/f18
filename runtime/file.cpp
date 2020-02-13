@@ -79,7 +79,6 @@ void OpenFile::Open(
 }
 
 void OpenFile::Predefine(int fd) {
-  CriticalSection criticalSection{lock_};
   fd_ = fd;
   path_.reset();
   pathLength_ = 0;
@@ -90,7 +89,6 @@ void OpenFile::Predefine(int fd) {
 }
 
 void OpenFile::Close(CloseStatus status, IoErrorHandler &handler) {
-  CriticalSection criticalSection{lock_};
   CheckOpen(handler);
   pending_.reset();
   knownSize_.reset();
@@ -116,7 +114,6 @@ std::size_t OpenFile::Read(FileOffset at, char *buffer, std::size_t minBytes,
   if (maxBytes == 0) {
     return 0;
   }
-  CriticalSection criticalSection{lock_};
   CheckOpen(handler);
   if (!Seek(at, handler)) {
     return 0;
@@ -150,7 +147,6 @@ std::size_t OpenFile::Write(FileOffset at, const char *buffer,
   if (bytes == 0) {
     return 0;
   }
-  CriticalSection criticalSection{lock_};
   CheckOpen(handler);
   if (!Seek(at, handler)) {
     return 0;
@@ -176,7 +172,6 @@ std::size_t OpenFile::Write(FileOffset at, const char *buffer,
 }
 
 void OpenFile::Truncate(FileOffset at, IoErrorHandler &handler) {
-  CriticalSection criticalSection{lock_};
   CheckOpen(handler);
   if (!knownSize_ || *knownSize_ != at) {
     if (::ftruncate(fd_, at) != 0) {
@@ -191,7 +186,6 @@ void OpenFile::Truncate(FileOffset at, IoErrorHandler &handler) {
 // TODO: True asynchronicity
 int OpenFile::ReadAsynchronously(
     FileOffset at, char *buffer, std::size_t bytes, IoErrorHandler &handler) {
-  CriticalSection criticalSection{lock_};
   CheckOpen(handler);
   int iostat{0};
   for (std::size_t got{0}; got < bytes;) {
@@ -221,7 +215,6 @@ int OpenFile::ReadAsynchronously(
 // TODO: True asynchronicity
 int OpenFile::WriteAsynchronously(FileOffset at, const char *buffer,
     std::size_t bytes, IoErrorHandler &handler) {
-  CriticalSection criticalSection{lock_};
   CheckOpen(handler);
   int iostat{0};
   for (std::size_t put{0}; put < bytes;) {
@@ -247,19 +240,16 @@ int OpenFile::WriteAsynchronously(FileOffset at, const char *buffer,
 
 void OpenFile::Wait(int id, IoErrorHandler &handler) {
   std::optional<int> ioStat;
-  {
-    CriticalSection criticalSection{lock_};
-    Pending *prev{nullptr};
-    for (Pending *p{pending_.get()}; p; p = (prev = p)->next.get()) {
-      if (p->id == id) {
-        ioStat = p->ioStat;
-        if (prev) {
-          prev->next.reset(p->next.release());
-        } else {
-          pending_.reset(p->next.release());
-        }
-        break;
+  Pending *prev{nullptr};
+  for (Pending *p{pending_.get()}; p; p = (prev = p)->next.get()) {
+    if (p->id == id) {
+      ioStat = p->ioStat;
+      if (prev) {
+        prev->next.reset(p->next.release());
+      } else {
+        pending_.reset(p->next.release());
       }
+      break;
     }
   }
   if (ioStat) {
@@ -270,14 +260,11 @@ void OpenFile::Wait(int id, IoErrorHandler &handler) {
 void OpenFile::WaitAll(IoErrorHandler &handler) {
   while (true) {
     int ioStat;
-    {
-      CriticalSection criticalSection{lock_};
-      if (pending_) {
-        ioStat = pending_->ioStat;
-        pending_.reset(pending_->next.release());
-      } else {
-        return;
-      }
+    if (pending_) {
+      ioStat = pending_->ioStat;
+      pending_.reset(pending_->next.release());
+    } else {
+      return;
     }
     handler.SignalError(ioStat);
   }

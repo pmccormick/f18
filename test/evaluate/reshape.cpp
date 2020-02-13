@@ -9,9 +9,8 @@ using namespace Fortran::runtime;
 int main() {
   static const SubscriptValue ones[]{1, 1, 1};
   static const SubscriptValue sourceExtent[]{2, 3, 4};
-  std::unique_ptr<Descriptor> source{
-      Descriptor::Create(TypeCategory::Integer, sizeof(std::int32_t), nullptr,
-          3, sourceExtent, CFI_attribute_allocatable)};
+  auto source{Descriptor::Create(TypeCategory::Integer, sizeof(std::int32_t),
+      nullptr, 3, sourceExtent, CFI_attribute_allocatable)};
   source->Check();
   MATCH(3, source->rank());
   MATCH(sizeof(std::int32_t), source->ElementBytes());
@@ -30,7 +29,7 @@ int main() {
 
   static const std::int16_t shapeData[]{8, 4};
   static const SubscriptValue shapeExtent{2};
-  std::unique_ptr<Descriptor> shape{Descriptor::Create(TypeCategory::Integer,
+  auto shape{Descriptor::Create(TypeCategory::Integer,
       static_cast<int>(sizeof shapeData[0]),
       const_cast<void *>(reinterpret_cast<const void *>(shapeData)), 1,
       &shapeExtent, CFI_attribute_pointer)};
@@ -54,8 +53,7 @@ int main() {
   MATCH(2, pad.GetDimension(1).Extent());
   MATCH(3, pad.GetDimension(2).Extent());
 
-  std::unique_ptr<Descriptor> result{RESHAPE(*source, *shape, &pad)};
-
+  auto result{RESHAPE(*source, *shape, &pad)};
   TEST(result.get() != nullptr);
   result->Check();
   MATCH(sizeof(std::int32_t), result->ElementBytes());

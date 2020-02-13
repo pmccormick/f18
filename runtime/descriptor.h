@@ -19,14 +19,14 @@
 // but should never reference this internal header.
 
 #include "derived-type.h"
+#include "memory.h"
 #include "type-code.h"
 #include "flang/ISO_Fortran_binding.h"
 #include <cassert>
 #include <cinttypes>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
-#include <memory>
-#include <ostream>
 
 namespace Fortran::runtime {
 
@@ -93,7 +93,7 @@ public:
     len_[which] = x;
   }
 
-  std::ostream &Dump(std::ostream &) const;
+  void Dump(FILE * = stdout) const;
 
 private:
   const DerivedType *derivedType_{nullptr};
@@ -141,17 +141,15 @@ public:
       const SubscriptValue *extent = nullptr,
       ISO::CFI_attribute_t attribute = CFI_attribute_other);
 
-  static std::unique_ptr<Descriptor> Create(TypeCode t,
-      std::size_t elementBytes, void *p = nullptr, int rank = maxRank,
-      const SubscriptValue *extent = nullptr,
-      ISO::CFI_attribute_t attribute = CFI_attribute_other);
-  static std::unique_ptr<Descriptor> Create(TypeCategory, int kind,
+  static OwningPtr<Descriptor> Create(TypeCode t, std::size_t elementBytes,
       void *p = nullptr, int rank = maxRank,
       const SubscriptValue *extent = nullptr,
       ISO::CFI_attribute_t attribute = CFI_attribute_other);
-  static std::unique_ptr<Descriptor> Create(const DerivedType &dt,
-      void *p = nullptr, int rank = maxRank,
-      const SubscriptValue *extent = nullptr,
+  static OwningPtr<Descriptor> Create(TypeCategory, int kind, void *p = nullptr,
+      int rank = maxRank, const SubscriptValue *extent = nullptr,
+      ISO::CFI_attribute_t attribute = CFI_attribute_other);
+  static OwningPtr<Descriptor> Create(const DerivedType &dt, void *p = nullptr,
+      int rank = maxRank, const SubscriptValue *extent = nullptr,
       ISO::CFI_attribute_t attribute = CFI_attribute_other);
 
   ISO::CFI_cdesc_t &raw() { return raw_; }
@@ -270,7 +268,7 @@ public:
 
   // TODO: creation of array sections
 
-  std::ostream &Dump(std::ostream &) const;
+  void Dump(FILE * = stdout) const;
 
 private:
   ISO::CFI_cdesc_t raw_;

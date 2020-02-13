@@ -25,13 +25,22 @@ OwningPtr<char> SaveDefaultCharacter(
 
 static bool CaseInsensitiveMatch(
     const char *value, std::size_t length, const char *possibility) {
-  for (; length-- > 0; ++value, ++possibility) {
-    char ch{*value};
+  for (; length-- > 0; ++possibility) {
+    char ch{*value++};
     if (ch >= 'a' && ch <= 'z') {
       ch += 'A' - 'a';
     }
-    if (*possibility == '\0' || ch != *possibility) {
-      return false;
+    if (*possibility != ch) {
+      if (*possibility != '\0' || ch != ' ') {
+        return false;
+      }
+      // Ignore trailing blanks (12.5.6.2 p1)
+      while (length-- > 0) {
+        if (*value++ != ' ') {
+          return false;
+        }
+      }
+      return true;
     }
   }
   return *possibility == '\0';

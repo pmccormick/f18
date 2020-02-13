@@ -21,6 +21,7 @@ add_library(FortranRuntime
   io-stmt.cpp
   main.cpp
   memory.cpp
+  numeric-input.cpp
   numeric-output.cpp
   stop.cpp
   terminator.cpp
@@ -28,9 +29,9 @@ add_library(FortranRuntime
   transformational.cpp
   type-code.cpp
   unit.cpp
+  unit-map.cpp
 )
 
 target_link_libraries(FortranRuntime
-  FortranCommon
   FortranDecimal
 )

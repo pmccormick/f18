@@ -27,11 +27,5 @@ OwningPtr<char> SaveDefaultCharacter(
 // or -1 when it has no match.
 int IdentifyValue(
     const char *value, std::size_t length, const char *possibilities[]);
-
-// A std::map<> customized to use the runtime's memory allocator
-template<typename KEY, typename VALUE>
-using MapAllocator = Allocator<std::pair<std::add_const_t<KEY>, VALUE>>;
-template<typename KEY, typename VALUE, typename COMPARE = std::less<KEY>>
-using Map = std::map<KEY, VALUE, COMPARE, MapAllocator<KEY, VALUE>>;
 }
 #endif  // FORTRAN_RUNTIME_TOOLS_H_

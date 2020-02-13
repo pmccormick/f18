@@ -46,6 +46,22 @@ bool InternalIoStatementState<isInput, CHAR>::Emit(
 }
 
 template<bool isInput, typename CHAR>
+const CHAR *InternalIoStatementState<isInput, CHAR>::View(std::size_t &chars) {
+  if constexpr (!isInput) {
+    Crash(
+        "InternalIoStatementState<false>::View() called for output statement");
+    return nullptr;
+  }
+  if constexpr (!std::is_same_v<CHAR, char>) {
+    Crash("InternalIoStatementState<false>::View() called for non-default "
+          "CHARACTER kind (TODO!)");
+    return nullptr;
+  }
+  // TODO: non-default CHARACTER support
+  return unit_.View(chars, *this);
+}
+
+template<bool isInput, typename CHAR>
 bool InternalIoStatementState<isInput, CHAR>::AdvanceRecord(int n) {
   while (n-- > 0) {
     if (!unit_.AdvanceRecord(*this)) {
@@ -152,12 +168,14 @@ int OpenStatementState::EndIoStatement() {
     Crash("OPEN statement for connected unit must have STATUS='OLD'");
   }
   unit().OpenUnit(status_, position_, std::move(path_), pathLength_, *this);
-  return IoStatementBase::EndIoStatement();
+  return ExternalIoStatementBase::EndIoStatement();
 }
 
 int CloseStatementState::EndIoStatement() {
+  int result{ExternalIoStatementBase::EndIoStatement()};
   unit().CloseUnit(status_, *this);
-  return IoStatementBase::EndIoStatement();
+  unit().DestroyClosed();
+  return result;
 }
 
 int NoopCloseStatementState::EndIoStatement() {
@@ -179,7 +197,7 @@ template<bool isInput> int ExternalIoStatementState<isInput>::EndIoStatement() {
 template<bool isInput>
 bool ExternalIoStatementState<isInput>::Emit(
     const char *data, std::size_t chars) {
-  if (isInput) {
+  if constexpr (isInput) {
     Crash("ExternalIoStatementState::Emit called for input statement");
   }
   return unit().Emit(data, chars * sizeof(*data), *this);
@@ -188,7 +206,7 @@ bool ExternalIoStatementState<isInput>::Emit(
 template<bool isInput>
 bool ExternalIoStatementState<isInput>::Emit(
     const char16_t *data, std::size_t chars) {
-  if (isInput) {
+  if constexpr (isInput) {
     Crash("ExternalIoStatementState::Emit called for input statement");
   }
   // TODO: UTF-8 encoding
@@ -199,12 +217,20 @@ bool ExternalIoStatementState<isInput>::Emit(
 template<bool isInput>
 bool ExternalIoStatementState<isInput>::Emit(
     const char32_t *data, std::size_t chars) {
-  if (isInput) {
+  if constexpr (isInput) {
     Crash("ExternalIoStatementState::Emit called for input statement");
   }
   // TODO: UTF-8 encoding
   return unit().Emit(
       reinterpret_cast<const char *>(data), chars * sizeof(*data), *this);
+}
+
+template<bool isInput>
+const char *ExternalIoStatementState<isInput>::View(std::size_t &chars) {
+  if constexpr (!isInput) {
+    Crash("ExternalIoStatementState::View called for output statement");
+  }
+  return unit().View(chars, *this);
 }
 
 template<bool isInput>
@@ -249,8 +275,17 @@ bool IoStatementState::Emit(const char *data, std::size_t n) {
   return std::visit([=](auto &x) { return x.get().Emit(data, n); }, u_);
 }
 
+const char *IoStatementState::View(std::size_t &chars) {
+  return std::visit([&](auto &x) { return x.get().View(chars); }, u_);
+}
+
 bool IoStatementState::AdvanceRecord(int n) {
   return std::visit([=](auto &x) { return x.get().AdvanceRecord(n); }, u_);
+}
+
+bool IoStatementState::HandleRelativePosition(std::int64_t n) {
+  return std::visit(
+      [=](auto &x) { return x.get().HandleRelativePosition(n); }, u_);
 }
 
 int IoStatementState::EndIoStatement() {
@@ -355,8 +390,13 @@ template class InternalIoStatementState<true>;
 template class InternalFormattedIoStatementState<false>;
 template class InternalFormattedIoStatementState<true>;
 template class InternalListIoStatementState<false>;
+template class InternalListIoStatementState<true>;
 template class ExternalIoStatementState<false>;
+template class ExternalIoStatementState<true>;
 template class ExternalFormattedIoStatementState<false>;
+template class ExternalFormattedIoStatementState<true>;
 template class ExternalListIoStatementState<false>;
+template class ExternalListIoStatementState<true>;
 template class UnformattedIoStatementState<false>;
+template class UnformattedIoStatementState<true>;
 }

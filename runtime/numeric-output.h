@@ -24,11 +24,9 @@
 
 namespace Fortran::runtime::io {
 
-class IoStatementState;
-
 // I, B, O, Z, and G output editing for INTEGER.
-// edit is const here (and elsewhere in this header) so that one
-// edit descriptor with a repeat factor may safely serve to edit
+// The DataEdit reference is const here (and elsewhere in this header) so that
+// one edit descriptor with a repeat factor may safely serve to edit
 // multiple elements of an array.
 bool EditIntegerOutput(IoStatementState &, const DataEdit &, std::int64_t);
 

@@ -30,6 +30,7 @@ public:
   void EndIoStatement();
 
   bool Emit(const char *, std::size_t bytes, IoErrorHandler &);
+  const char *View(std::size_t &chars, IoErrorHandler &);
   bool AdvanceRecord(IoErrorHandler &);
   bool HandleAbsolutePosition(std::int64_t, IoErrorHandler &);
   bool HandleRelativePosition(std::int64_t, IoErrorHandler &);

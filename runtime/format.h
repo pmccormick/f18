@@ -66,6 +66,7 @@ struct DefaultFormatControlCallbacks : public IoErrorHandler {
   bool Emit(const char *, std::size_t);
   bool Emit(const char16_t *, std::size_t);
   bool Emit(const char32_t *, std::size_t);
+  const char *View(std::size_t &);
   bool AdvanceRecord(int = 1);
   bool HandleAbsolutePosition(std::int64_t);
   bool HandleRelativePosition(std::int64_t);

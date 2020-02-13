@@ -27,6 +27,8 @@
 
 namespace Fortran::runtime::io {
 
+class UnitMap;
+
 class ExternalFileUnit : public ConnectionState,
                          public OpenFile,
                          public FileFrame<ExternalFileUnit> {
@@ -36,19 +38,21 @@ public:
 
   static ExternalFileUnit *LookUp(int unit);
   static ExternalFileUnit &LookUpOrCrash(int unit, const Terminator &);
-  static ExternalFileUnit &LookUpOrCreate(int unit, bool *wasExtant = nullptr);
-  static int NewUnit();
-  static void InitializePredefinedUnits();
+  static ExternalFileUnit &LookUpOrCreate(
+      int unit, const Terminator &, bool *wasExtant = nullptr);
+  static ExternalFileUnit *LookUpForClose(int unit);
+  static int NewUnit(const Terminator &);
   static void CloseAll(IoErrorHandler &);
 
   void OpenUnit(OpenStatus, Position, OwningPtr<char> &&path,
       std::size_t pathLength, IoErrorHandler &);
   void CloseUnit(CloseStatus, IoErrorHandler &);
+  void DestroyClosed();
 
   template<typename A, typename... X>
   IoStatementState &BeginIoStatement(X &&... xs) {
-    // TODO: lock().Take() here, and keep it until EndIoStatement()?
-    // Nested I/O from derived types wouldn't work, though.
+    // TODO: Child data transfer statements vs. locking
+    lock_.Take();  // dropped in EndIoStatement()
     A &state{u_.emplace<A>(std::forward<X>(xs)...)};
     if constexpr (!std::is_same_v<A, OpenStatementState>) {
       state.mutableModes() = ConnectionState::modes;
@@ -58,6 +62,7 @@ public:
   }
 
   bool Emit(const char *, std::size_t bytes, IoErrorHandler &);
+  const char *View(std::size_t &bytes, IoErrorHandler &);
   void SetLeftTabLimit();
   bool AdvanceRecord(IoErrorHandler &);
   bool HandleAbsolutePosition(std::int64_t, IoErrorHandler &);
@@ -67,17 +72,28 @@ public:
   void EndIoStatement();
 
 private:
+  static UnitMap &GetUnitMap();
   bool SetPositionInRecord(std::int64_t, IoErrorHandler &);
+  const char *NextSequentialUnformattedInputRecord(
+      std::size_t &, IoErrorHandler &);
+  const char *NextSequentialFormattedInputRecord(
+      std::size_t &, IoErrorHandler &);
 
   int unitNumber_{-1};
   bool isReading_{false};
+
+  Lock lock_;
   // When an I/O statement is in progress on this unit, holds its state.
   std::variant<std::monostate, OpenStatementState, CloseStatementState,
       ExternalFormattedIoStatementState<false>,
-      ExternalListIoStatementState<false>, UnformattedIoStatementState<false>>
+      ExternalFormattedIoStatementState<true>,
+      ExternalListIoStatementState<false>, ExternalListIoStatementState<true>,
+      UnformattedIoStatementState<false>, UnformattedIoStatementState<true>>
       u_;
   // Points to the active alternative, if any, in u_, for use as a Cookie
   std::optional<IoStatementState> io_;
+
+  static UnitMap *unitMap_;
 };
 
 }

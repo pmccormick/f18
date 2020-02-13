@@ -32,8 +32,9 @@ struct ConnectionAttributes {
 
 struct ConnectionState : public ConnectionAttributes {
   std::size_t RemainingSpaceInRecord() const;
+  std::int64_t offsetInFile{0};
+  std::int64_t nextInputRecordFileOffset{0};
   // Positions in a record file (sequential or direct, but not stream)
-  std::int64_t recordOffsetInFile{0};
   std::int64_t currentRecordNumber{1};  // 1 is first
   std::int64_t positionInRecord{0};  // offset in current record
   std::int64_t furthestPositionInRecord{0};  // max(positionInRecord)

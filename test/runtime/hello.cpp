@@ -46,21 +46,19 @@ static void multiline() {
   SubscriptValue extent[]{4};
   whole.Establish(TypeCode{CFI_type_char}, sizeof buffer[0], &buffer, 1, extent,
       CFI_attribute_pointer);
-  //  whole.Dump(std::cout);
+  whole.Dump();
   whole.Check();
   Descriptor &section{staticDescriptor[1].descriptor()};
   SubscriptValue lowers[]{0}, uppers[]{3}, strides[]{1};
   section.Establish(whole.type(), whole.ElementBytes(), nullptr, 1, extent,
       CFI_attribute_pointer);
-  //  section.Dump(std::cout);
-  section.Check();
   if (auto error{
           CFI_section(&section.raw(), &whole.raw(), lowers, uppers, strides)}) {
     std::cerr << "multiline: CFI_section failed: " << error << '\n';
     ++failures;
     return;
   }
-  section.Dump(std::cout);
+  section.Dump();
   section.Check();
   const char *format{"('?abcde,',T1,'>',T9,A,TL12,A,TR25,'<'//G0,25X,'done')"};
   auto cookie{IONAME(BeginInternalArrayFormattedOutput)(

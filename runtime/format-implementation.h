@@ -14,7 +14,6 @@
 #include "format.h"
 #include "io-stmt.h"
 #include "main.h"
-#include "flang/common/format.h"
 #include "flang/decimal/decimal.h"
 #include <limits>
 
@@ -40,15 +39,46 @@ template<typename CONTEXT>
 int FormatControl<CONTEXT>::GetMaxParenthesisNesting(
     const Terminator &terminator, const CharType *format,
     std::size_t formatLength) {
-  using Validator = common::FormatValidator<CharType>;
-  typename Validator::Reporter reporter{
-      [&](const common::FormatMessage &message) {
-        terminator.Crash(message.text, message.arg);
-        return false;  // crashes on error above
-      }};
-  Validator validator{format, formatLength, reporter};
-  validator.Check();
-  return validator.maxNesting();
+  int maxNesting{0};
+  int nesting{0};
+  const CharType *end{format + formatLength};
+  std::optional<CharType> quote;
+  int repeat{0};
+  for (const CharType *p{format}; p < end; ++p) {
+    if (quote) {
+      if (*p == *quote) {
+        quote.reset();
+      }
+    } else if (*p >= '0' && *p <= '9') {
+      repeat = 10 * repeat + *p - '0';
+    } else if (*p != ' ') {
+      switch (*p) {
+      case '\'':
+      case '"': quote = *p; break;
+      case 'h':
+      case 'H':  // 9HHOLLERITH
+        p += repeat;
+        if (p >= end) {
+          terminator.Crash("Hollerith (%dH) too long in FORMAT", repeat);
+        }
+        break;
+      case ' ': break;
+      case '(':
+        ++nesting;
+        maxNesting = std::max(nesting, maxNesting);
+        break;
+      case ')': nesting = std::max(nesting - 1, 0); break;
+      }
+      repeat = 0;
+    }
+  }
+  if (quote) {
+    terminator.Crash("Unbalanced quotation marks in FORMAT string");
+  }
+  if (nesting) {
+    terminator.Crash("Unbalanced parentheses in FORMAT string");
+  }
+  return maxNesting;
 }
 
 template<typename CONTEXT>

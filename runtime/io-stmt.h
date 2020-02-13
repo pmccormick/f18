@@ -42,13 +42,15 @@ public:
   template<typename A> explicit IoStatementState(A &x) : u_{x} {}
 
   // These member functions each project themselves into the active alternative.
-  // They're used by per-data-item routines in the I/O API(e.g., OutputReal64)
+  // They're used by per-data-item routines in the I/O API (e.g., OutputReal64)
   // to interact with the state of the I/O statement in progress.
   // This design avoids virtual member functions and function pointers,
   // which may not have good support in some use cases.
   DataEdit GetNextDataEdit(int = 1);
   bool Emit(const char *, std::size_t);
+  const char *View(std::size_t &bytes);
   bool AdvanceRecord(int = 1);
+  bool HandleRelativePosition(std::int64_t);
   int EndIoStatement();
   ConnectionState &GetConnectionState();
   MutableModes &mutableModes();
@@ -76,9 +78,13 @@ private:
       std::reference_wrapper<InternalFormattedIoStatementState<false>>,
       std::reference_wrapper<InternalFormattedIoStatementState<true>>,
       std::reference_wrapper<InternalListIoStatementState<false>>,
+      std::reference_wrapper<InternalListIoStatementState<true>>,
       std::reference_wrapper<ExternalFormattedIoStatementState<false>>,
+      std::reference_wrapper<ExternalFormattedIoStatementState<true>>,
       std::reference_wrapper<ExternalListIoStatementState<false>>,
-      std::reference_wrapper<UnformattedIoStatementState<false>>>
+      std::reference_wrapper<ExternalListIoStatementState<true>>,
+      std::reference_wrapper<UnformattedIoStatementState<false>>,
+      std::reference_wrapper<UnformattedIoStatementState<true>>>
       u_;
 };
 
@@ -119,6 +125,7 @@ public:
       const Descriptor &, const char *sourceFile = nullptr, int sourceLine = 0);
   int EndIoStatement();
   bool Emit(const CharType *, std::size_t chars /* not bytes */);
+  const CharType *View(std::size_t &chars);
   bool AdvanceRecord(int = 1);
   ConnectionState &GetConnectionState() { return unit_; }
   MutableModes &mutableModes() { return unit_.modes; }
@@ -203,6 +210,7 @@ public:
   bool Emit(const char *, std::size_t chars /* not bytes */);
   bool Emit(const char16_t *, std::size_t chars /* not bytes */);
   bool Emit(const char32_t *, std::size_t chars /* not bytes */);
+  const char *View(std::size_t &bytes /* not chars */);
   bool AdvanceRecord(int = 1);
   bool HandleRelativePosition(std::int64_t);
   bool HandleAbsolutePosition(std::int64_t);
@@ -305,13 +313,19 @@ extern template class InternalIoStatementState<true>;
 extern template class InternalFormattedIoStatementState<false>;
 extern template class InternalFormattedIoStatementState<true>;
 extern template class InternalListIoStatementState<false>;
+extern template class InternalListIoStatementState<true>;
 extern template class ExternalIoStatementState<false>;
+extern template class ExternalIoStatementState<true>;
 extern template class ExternalFormattedIoStatementState<false>;
+extern template class ExternalFormattedIoStatementState<true>;
 extern template class ExternalListIoStatementState<false>;
+extern template class ExternalListIoStatementState<true>;
 extern template class UnformattedIoStatementState<false>;
+extern template class UnformattedIoStatementState<true>;
 extern template class FormatControl<InternalFormattedIoStatementState<false>>;
 extern template class FormatControl<InternalFormattedIoStatementState<true>>;
 extern template class FormatControl<ExternalFormattedIoStatementState<false>>;
+extern template class FormatControl<ExternalFormattedIoStatementState<true>>;
 
 }
 #endif  // FORTRAN_RUNTIME_IO_STMT_H_

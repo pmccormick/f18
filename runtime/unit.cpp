@@ -7,18 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "unit.h"
-#include "lock.h"
-#include "memory.h"
-#include "tools.h"
-#include <algorithm>
-#include <type_traits>
+#include "unit-map.h"
 
 namespace Fortran::runtime::io {
 
-static Lock mapLock;
-static Terminator mapTerminator;
-static Map<int, ExternalFileUnit> unitMap{
-    MapAllocator<int, ExternalFileUnit>{mapTerminator}};
+UnitMap *ExternalFileUnit::unitMap_{nullptr};
 static ExternalFileUnit *defaultOutput{nullptr};
 
 void FlushOutputOnCrash(const Terminator &terminator) {
@@ -30,14 +23,11 @@ void FlushOutputOnCrash(const Terminator &terminator) {
 }
 
 ExternalFileUnit *ExternalFileUnit::LookUp(int unit) {
-  CriticalSection criticalSection{mapLock};
-  auto iter{unitMap.find(unit)};
-  return iter == unitMap.end() ? nullptr : &iter->second;
+  return GetUnitMap().LookUp(unit);
 }
 
 ExternalFileUnit &ExternalFileUnit::LookUpOrCrash(
     int unit, const Terminator &terminator) {
-  CriticalSection criticalSection{mapLock};
   ExternalFileUnit *file{LookUp(unit)};
   if (!file) {
     terminator.Crash("Not an open I/O unit number: %d", unit);
@@ -45,25 +35,22 @@ ExternalFileUnit &ExternalFileUnit::LookUpOrCrash(
   return *file;
 }
 
-ExternalFileUnit &ExternalFileUnit::LookUpOrCreate(int unit, bool *wasExtant) {
-  CriticalSection criticalSection{mapLock};
-  auto pair{unitMap.emplace(unit, unit)};
-  if (wasExtant) {
-    *wasExtant = !pair.second;
-  }
-  return pair.first->second;
+ExternalFileUnit &ExternalFileUnit::LookUpOrCreate(
+    int unit, const Terminator &terminator, bool *wasExtant) {
+  return GetUnitMap().LookUpOrCreate(unit, terminator, wasExtant);
 }
 
-int ExternalFileUnit::NewUnit() {
-  CriticalSection criticalSection{mapLock};
-  static int nextNewUnit{-1000};  // see 12.5.6.12 in Fortran 2018
-  return --nextNewUnit;
+ExternalFileUnit *ExternalFileUnit::LookUpForClose(int unit) {
+  return GetUnitMap().LookUpForClose(unit);
+}
+
+int ExternalFileUnit::NewUnit(const Terminator &terminator) {
+  return GetUnitMap().NewUnit(terminator).unitNumber();
 }
 
 void ExternalFileUnit::OpenUnit(OpenStatus status, Position position,
     OwningPtr<char> &&newPath, std::size_t newPathLength,
     IoErrorHandler &handler) {
-  CriticalSection criticalSection{lock()};
   if (IsOpen()) {
     if (status == OpenStatus::Old &&
         (!newPath.get() ||
@@ -82,39 +69,40 @@ void ExternalFileUnit::OpenUnit(OpenStatus status, Position position,
 }
 
 void ExternalFileUnit::CloseUnit(CloseStatus status, IoErrorHandler &handler) {
-  {
-    CriticalSection criticalSection{lock()};
-    Flush(handler);
-    Close(status, handler);
-  }
-  CriticalSection criticalSection{mapLock};
-  auto iter{unitMap.find(unitNumber_)};
-  if (iter != unitMap.end()) {
-    unitMap.erase(iter);
-  }
+  Flush(handler);
+  Close(status, handler);
 }
 
-void ExternalFileUnit::InitializePredefinedUnits() {
-  ExternalFileUnit &out{ExternalFileUnit::LookUpOrCreate(6)};
+void ExternalFileUnit::DestroyClosed() {
+  GetUnitMap().DestroyClosed(*this);  // destroys *this
+}
+
+UnitMap &ExternalFileUnit::GetUnitMap() {
+  if (unitMap_) {
+    return *unitMap_;
+  }
+  Terminator terminator{__FILE__, __LINE__};
+  unitMap_ = &New<UnitMap>{}(terminator);
+  ExternalFileUnit &out{ExternalFileUnit::LookUpOrCreate(6, terminator)};
   out.Predefine(1);
   out.set_mayRead(false);
   out.set_mayWrite(true);
   out.set_mayPosition(false);
   defaultOutput = &out;
-  ExternalFileUnit &in{ExternalFileUnit::LookUpOrCreate(5)};
+  ExternalFileUnit &in{ExternalFileUnit::LookUpOrCreate(5, terminator)};
   in.Predefine(0);
   in.set_mayRead(true);
   in.set_mayWrite(false);
   in.set_mayPosition(false);
   // TODO: Set UTF-8 mode from the environment
+  return *unitMap_;
 }
 
 void ExternalFileUnit::CloseAll(IoErrorHandler &handler) {
-  CriticalSection criticalSection{mapLock};
-  defaultOutput = nullptr;
-  while (!unitMap.empty()) {
-    auto &pair{*unitMap.begin()};
-    pair.second.CloseUnit(CloseStatus::Keep, handler);
+  if (unitMap_) {
+    defaultOutput = nullptr;
+    unitMap_->CloseAll(handler);
+    FreeMemoryAndNullify(unitMap_);
   }
 }
 
@@ -129,7 +117,7 @@ bool ExternalFileUnit::SetPositionInRecord(
   }
   if (n > furthestPositionInRecord) {
     if (!isReading_ && ok) {
-      WriteFrame(recordOffsetInFile, n, handler);
+      WriteFrame(offsetInFile, n, handler);
       std::fill_n(Frame() + furthestPositionInRecord,
           n - furthestPositionInRecord, ' ');
     }
@@ -143,11 +131,47 @@ bool ExternalFileUnit::Emit(
     const char *data, std::size_t bytes, IoErrorHandler &handler) {
   auto furthestAfter{std::max(furthestPositionInRecord,
       positionInRecord + static_cast<std::int64_t>(bytes))};
-  WriteFrame(recordOffsetInFile, furthestAfter, handler);
+  WriteFrame(offsetInFile, furthestAfter, handler);
   std::memcpy(Frame() + positionInRecord, data, bytes);
   positionInRecord += bytes;
   furthestPositionInRecord = furthestAfter;
   return true;
+}
+
+const char *ExternalFileUnit::View(
+    std::size_t &bytes, IoErrorHandler &handler) {
+  isReading_ = true;  // TODO: manage transitions
+  if (access == Access::Stream) {
+    auto chunk{std::max<std::size_t>(bytes, 256)};
+    bytes = ReadFrame(offsetInFile, chunk, handler);
+    return Frame();
+  }
+  std::size_t wanted{bytes};
+  const char *frame{nullptr};
+  if (recordLength.has_value()) {
+    // Direct, or sequential has determined current record length
+    bytes = ReadFrame(offsetInFile + positionInRecord,
+        *recordLength - positionInRecord, handler);
+    frame = Frame() + positionInRecord;
+  } else {
+    // Sequential input needs to read next record
+    if (endfileRecordNumber.has_value() &&
+        currentRecordNumber >= *endfileRecordNumber) {
+      handler.SignalEnd();
+      bytes = 0;
+      return nullptr;
+    }
+    offsetInFile = nextInputRecordFileOffset;
+    if (isUnformatted) {
+      frame = NextSequentialUnformattedInputRecord(bytes, handler);
+    } else {
+      frame = NextSequentialFormattedInputRecord(bytes, handler);
+    }
+  }
+  if (frame && bytes < wanted) {
+    handler.SignalEor();
+  }
+  return frame;
 }
 
 void ExternalFileUnit::SetLeftTabLimit() {
@@ -157,13 +181,17 @@ void ExternalFileUnit::SetLeftTabLimit() {
 
 bool ExternalFileUnit::AdvanceRecord(IoErrorHandler &handler) {
   bool ok{true};
-  if (recordLength.has_value()) {  // fill fixed-size record
+  if (isReading_) {
+    if (access == Access::Sequential) {
+      recordLength.reset();
+    }
+  } else if (recordLength.has_value()) {  // fill fixed-size record
     ok &= SetPositionInRecord(*recordLength, handler);
-  } else if (!isUnformatted && !isReading_) {
-    ok &= SetPositionInRecord(furthestPositionInRecord, handler) &&
-        Emit("\n", 1, handler);
+  } else if (!isUnformatted) {
+    ok &= SetPositionInRecord(furthestPositionInRecord, handler);
+    ok &= Emit("\n", 1, handler);  // TODO: Windows CR+LF
+    offsetInFile += furthestPositionInRecord;
   }
-  recordOffsetInFile += furthestPositionInRecord;
   ++currentRecordNumber;
   positionInRecord = 0;
   furthestPositionInRecord = 0;
@@ -191,5 +219,61 @@ void ExternalFileUnit::FlushIfTerminal(IoErrorHandler &handler) {
 void ExternalFileUnit::EndIoStatement() {
   io_.reset();
   u_.emplace<std::monostate>();
+  lock_.Drop();
+}
+
+const char *ExternalFileUnit::NextSequentialUnformattedInputRecord(
+    std::size_t &bytes, IoErrorHandler &handler) {
+  std::uint32_t header;
+  // Retain previous footer in frame for more efficient BACKSPACE
+  std::size_t retain{std::min<std::size_t>(offsetInFile, sizeof header)};
+  std::size_t want{retain + sizeof header};
+  std::size_t got{ReadFrame(offsetInFile - retain, want, handler)};
+  if (got >= want) {
+    std::memcpy(&header, Frame() + retain, sizeof header);
+    want = retain + header + 2 * sizeof header;
+    got = ReadFrame(offsetInFile - retain, want, handler);
+    if (got >= want) {
+      const char *start{Frame() + retain + sizeof header};
+      if (std::memcmp(start - sizeof header, start + header, sizeof header) ==
+          0) {
+        recordLength = header;
+        nextInputRecordFileOffset = offsetInFile + header + 2 * sizeof header;
+        positionInRecord = sizeof header;
+        bytes = header;
+        return start;
+      }
+      // TODO: signal corrupt file?
+    }
+  }
+  handler.SignalEnd();
+  bytes = 0;
+  return nullptr;
+}
+
+const char *ExternalFileUnit::NextSequentialFormattedInputRecord(
+    std::size_t &bytes, IoErrorHandler &handler) {
+  auto chunk{std::max<std::size_t>(bytes, 256)};
+  std::size_t length{0};
+  while (true) {
+    std::size_t got{ReadFrame(offsetInFile, length + chunk, handler)};
+    if (got <= length) {
+      handler.SignalEnd();
+      bytes = 0;
+      return nullptr;
+    }
+    const char *frame{Frame()};
+    if (const char *nl{reinterpret_cast<const char *>(
+            std::memchr(frame + length, '\n', chunk))}) {
+      length += nl - (frame + length);
+      nextInputRecordFileOffset = offsetInFile + length + 1;
+      if (length > 0 && frame[length - 1] == '\r') {
+        --length;
+      }
+      recordLength = length;
+      bytes = length;
+      return frame;
+    }
+  }
 }
 }
