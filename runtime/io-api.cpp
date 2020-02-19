@@ -99,55 +99,72 @@ Cookie IONAME(BeginInternalFormattedInput)(char *internal,
       formatLength, scratchArea, scratchBytes, sourceFile, sourceLine);
 }
 
-template<bool isInput, int defaultUnit>
+template<bool isInput>
 Cookie BeginExternalListIO(
     ExternalUnit unitNumber, const char *sourceFile, int sourceLine) {
   Terminator terminator{sourceFile, sourceLine};
-  int unit{unitNumber == DefaultUnit ? defaultUnit : unitNumber};
-  ExternalFileUnit &file{ExternalFileUnit::LookUpOrCrash(unit, terminator)};
-  if (file.isUnformatted) {
+  if (unitNumber == DefaultUnit) {
+    unitNumber = isInput ? 5 : 6;
+  }
+  ExternalFileUnit &unit{
+      ExternalFileUnit::LookUpOrCrash(unitNumber, terminator)};
+  if (unit.access == Access::Direct) {
+    terminator.Crash("List-directed I/O attempted on direct access file");
+  }
+  if (unit.isUnformatted) {
     terminator.Crash("List-directed I/O attempted on unformatted file");
   }
-  return &file.BeginIoStatement<ExternalListIoStatementState<isInput>>(
-      file, sourceFile, sourceLine);
+  IoStatementState &io{
+      unit.BeginIoStatement<ExternalListIoStatementState<isInput>>(
+          unit, sourceFile, sourceLine)};
+  if constexpr (isInput) {
+    io.AdvanceRecord();
+  }
+  return &io;
 }
 
 Cookie IONAME(BeginExternalListOutput)(
     ExternalUnit unitNumber, const char *sourceFile, int sourceLine) {
-  return BeginExternalListIO<false, 6>(unitNumber, sourceFile, sourceLine);
+  return BeginExternalListIO<false>(unitNumber, sourceFile, sourceLine);
 }
 
 Cookie IONAME(BeginExternalListInput)(
     ExternalUnit unitNumber, const char *sourceFile, int sourceLine) {
-  return BeginExternalListIO<true, 5>(unitNumber, sourceFile, sourceLine);
+  return BeginExternalListIO<true>(unitNumber, sourceFile, sourceLine);
 }
 
-template<bool isInput, int defaultUnit>
+template<bool isInput>
 Cookie BeginExternalFormattedIO(const char *format, std::size_t formatLength,
     ExternalUnit unitNumber, const char *sourceFile, int sourceLine) {
   Terminator terminator{sourceFile, sourceLine};
-  int unit{unitNumber == DefaultUnit ? defaultUnit : unitNumber};
-  ExternalFileUnit &file{ExternalFileUnit::LookUpOrCrash(unit, terminator)};
-  if (file.isUnformatted) {
+  if (unitNumber == DefaultUnit) {
+    unitNumber = isInput ? 5 : 6;
+  }
+  ExternalFileUnit &unit{
+      ExternalFileUnit::LookUpOrCrash(unitNumber, terminator)};
+  if (unit.isUnformatted) {
     terminator.Crash("Formatted I/O attempted on unformatted file");
   }
   IoStatementState &io{
-      file.BeginIoStatement<ExternalFormattedIoStatementState<isInput>>(
-          file, format, formatLength, sourceFile, sourceLine)};
+      unit.BeginIoStatement<ExternalFormattedIoStatementState<isInput>>(
+          unit, format, formatLength, sourceFile, sourceLine)};
+  if constexpr (isInput) {
+    io.AdvanceRecord();
+  }
   return &io;
 }
 
 Cookie IONAME(BeginExternalFormattedOutput)(const char *format,
     std::size_t formatLength, ExternalUnit unitNumber, const char *sourceFile,
     int sourceLine) {
-  return BeginExternalFormattedIO<false, 6>(
+  return BeginExternalFormattedIO<false>(
       format, formatLength, unitNumber, sourceFile, sourceLine);
 }
 
 Cookie IONAME(BeginExternalFormattedInput)(const char *format,
     std::size_t formatLength, ExternalUnit unitNumber, const char *sourceFile,
     int sourceLine) {
-  return BeginExternalFormattedIO<true, 5>(
+  return BeginExternalFormattedIO<true>(
       format, formatLength, unitNumber, sourceFile, sourceLine);
 }
 
@@ -163,7 +180,9 @@ Cookie BeginUnformattedIO(
   IoStatementState &io{
       file.BeginIoStatement<UnformattedIoStatementState<isInput>>(
           file, sourceFile, sourceLine)};
-  if constexpr (!isInput) {
+  if constexpr (isInput) {
+    io.AdvanceRecord();
+  } else {
     if (file.access == Access::Sequential && !file.recordLength.has_value()) {
       // Create space for (sub)record header to be completed by
       // UnformattedIoStatementState<false>::EndIoStatement()
@@ -251,6 +270,10 @@ bool IONAME(SetAdvance)(
   ConnectionState &connection{io.GetConnectionState()};
   connection.nonAdvancing =
       !YesOrNo(keyword, length, "ADVANCE", io.GetIoErrorHandler());
+  if (connection.nonAdvancing && connection.access == Access::Direct) {
+    io.GetIoErrorHandler().Crash(
+        "Non-advancing I/O attempted on direct access file");
+  }
   return true;
 }
 
@@ -531,8 +554,11 @@ bool IONAME(SetRecl)(Cookie cookie, std::size_t n) {
     io.GetIoErrorHandler().Crash(
         "SetRecl() called when not in an OPEN statement");
   }
+  if (n <= 0) {
+    io.GetIoErrorHandler().Crash("RECL= must be greater than zero");
+  }
   if (open->wasExtant() && open->unit().recordLength.has_value() &&
-      *open->unit().recordLength != n) {
+      *open->unit().recordLength != static_cast<std::int64_t>(n)) {
     open->Crash("RECL= may not be changed for an open unit");
   }
   open->unit().recordLength = n;

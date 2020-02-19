@@ -25,7 +25,7 @@ inline bool IsRecordFile(Access a) { return a != Access::Stream; }
 // established in an OPEN statement.
 struct ConnectionAttributes {
   Access access{Access::Sequential};  // ACCESS='SEQUENTIAL', 'DIRECT', 'STREAM'
-  std::optional<std::size_t> recordLength;  // RECL= when fixed-length
+  std::optional<std::int64_t> recordLength;  // RECL= when fixed-length
   bool isUnformatted{false};  // FORM='UNFORMATTED'
   bool isUTF8{false};  // ENCODING='UTF-8'
 };
@@ -33,7 +33,6 @@ struct ConnectionAttributes {
 struct ConnectionState : public ConnectionAttributes {
   std::size_t RemainingSpaceInRecord() const;
   std::int64_t offsetInFile{0};
-  std::int64_t nextInputRecordFileOffset{0};
   // Positions in a record file (sequential or direct, but not stream)
   std::int64_t currentRecordNumber{1};  // 1 is first
   std::int64_t positionInRecord{0};  // offset in current record

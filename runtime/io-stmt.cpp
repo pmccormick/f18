@@ -46,19 +46,13 @@ bool InternalIoStatementState<isInput, CHAR>::Emit(
 }
 
 template<bool isInput, typename CHAR>
-const CHAR *InternalIoStatementState<isInput, CHAR>::View(std::size_t &chars) {
+std::optional<char32_t> InternalIoStatementState<isInput, CHAR>::NextChar() {
   if constexpr (!isInput) {
-    Crash(
-        "InternalIoStatementState<false>::View() called for output statement");
-    return nullptr;
+    Crash("InternalIoStatementState<false>::NextChar() called for output "
+          "statement");
+    return std::nullopt;
   }
-  if constexpr (!std::is_same_v<CHAR, char>) {
-    Crash("InternalIoStatementState<false>::View() called for non-default "
-          "CHARACTER kind (TODO!)");
-    return nullptr;
-  }
-  // TODO: non-default CHARACTER support
-  return unit_.View(chars, *this);
+  return unit_.NextChar(*this);
 }
 
 template<bool isInput, typename CHAR>
@@ -103,7 +97,7 @@ InternalFormattedIoStatementState<isInput,
 template<bool isInput, typename CHAR>
 int InternalFormattedIoStatementState<isInput, CHAR>::EndIoStatement() {
   if constexpr (!isInput) {
-    format_.FinishOutput(*this);
+    format_.Finish(*this);  // ignore any remaining input positioning actions
   }
   return InternalIoStatementState<isInput, CHAR>::EndIoStatement();
 }
@@ -198,7 +192,7 @@ template<bool isInput>
 bool ExternalIoStatementState<isInput>::Emit(
     const char *data, std::size_t chars) {
   if constexpr (isInput) {
-    Crash("ExternalIoStatementState::Emit called for input statement");
+    Crash("ExternalIoStatementState::Emit(char) called for input statement");
   }
   return unit().Emit(data, chars * sizeof(*data), *this);
 }
@@ -207,7 +201,8 @@ template<bool isInput>
 bool ExternalIoStatementState<isInput>::Emit(
     const char16_t *data, std::size_t chars) {
   if constexpr (isInput) {
-    Crash("ExternalIoStatementState::Emit called for input statement");
+    Crash(
+        "ExternalIoStatementState::Emit(char16_t) called for input statement");
   }
   // TODO: UTF-8 encoding
   return unit().Emit(
@@ -218,7 +213,8 @@ template<bool isInput>
 bool ExternalIoStatementState<isInput>::Emit(
     const char32_t *data, std::size_t chars) {
   if constexpr (isInput) {
-    Crash("ExternalIoStatementState::Emit called for input statement");
+    Crash(
+        "ExternalIoStatementState::Emit(char32_t) called for input statement");
   }
   // TODO: UTF-8 encoding
   return unit().Emit(
@@ -226,11 +222,11 @@ bool ExternalIoStatementState<isInput>::Emit(
 }
 
 template<bool isInput>
-const char *ExternalIoStatementState<isInput>::View(std::size_t &chars) {
+std::optional<char32_t> ExternalIoStatementState<isInput>::NextChar() {
   if constexpr (!isInput) {
-    Crash("ExternalIoStatementState::View called for output statement");
+    Crash("ExternalIoStatementState::NextChar() called for output statement");
   }
-  return unit().View(chars, *this);
+  return unit().NextChar(*this);
 }
 
 template<bool isInput>
@@ -263,7 +259,7 @@ ExternalFormattedIoStatementState<isInput,
 
 template<bool isInput, typename CHAR>
 int ExternalFormattedIoStatementState<isInput, CHAR>::EndIoStatement() {
-  format_.FinishOutput(*this);
+  format_.Finish(*this);
   return ExternalIoStatementState<isInput>::EndIoStatement();
 }
 
@@ -275,8 +271,8 @@ bool IoStatementState::Emit(const char *data, std::size_t n) {
   return std::visit([=](auto &x) { return x.get().Emit(data, n); }, u_);
 }
 
-const char *IoStatementState::View(std::size_t &chars) {
-  return std::visit([&](auto &x) { return x.get().View(chars); }, u_);
+std::optional<char32_t> IoStatementState::NextChar() {
+  return std::visit([&](auto &x) { return x.get().NextChar(); }, u_);
 }
 
 bool IoStatementState::AdvanceRecord(int n) {
@@ -335,6 +331,18 @@ bool IoStatementState::EmitField(
     return EmitRepeated(' ', static_cast<int>(width - length)) &&
         Emit(p, length);
   }
+}
+
+std::optional<char32_t> IoStatementState::NextInField(std::size_t &remaining) {
+  if (remaining > 0) {
+    if (auto next{NextChar()}) {
+      --remaining;
+      HandleRelativePosition(1);
+      return next;
+    }
+    remaining = 0;
+  }
+  return std::nullopt;
 }
 
 bool ListDirectedStatementState<false>::NeedAdvance(

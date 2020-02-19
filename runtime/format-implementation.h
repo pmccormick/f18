@@ -378,7 +378,7 @@ DataEdit FormatControl<CONTEXT>::GetNextDataEdit(
 }
 
 template<typename CONTEXT>
-void FormatControl<CONTEXT>::FinishOutput(Context &context) {
+void FormatControl<CONTEXT>::Finish(Context &context) {
   CueUpNextDataEdit(context, true /* stop at colon or end of FORMAT */);
 }
 }

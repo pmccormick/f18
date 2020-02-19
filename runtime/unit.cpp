@@ -138,40 +138,32 @@ bool ExternalFileUnit::Emit(
   return true;
 }
 
-const char *ExternalFileUnit::View(
-    std::size_t &bytes, IoErrorHandler &handler) {
+std::optional<char32_t> ExternalFileUnit::NextChar(IoErrorHandler &handler) {
   isReading_ = true;  // TODO: manage transitions
-  if (access == Access::Stream) {
-    auto chunk{std::max<std::size_t>(bytes, 256)};
-    bytes = ReadFrame(offsetInFile, chunk, handler);
-    return Frame();
+  if (isUnformatted) {
+    handler.Crash("NextChar() called for unformatted input");
+    return std::nullopt;
   }
-  std::size_t wanted{bytes};
-  const char *frame{nullptr};
+  std::size_t chunk{256};  // for stream input
   if (recordLength.has_value()) {
-    // Direct, or sequential has determined current record length
-    bytes = ReadFrame(offsetInFile + positionInRecord,
-        *recordLength - positionInRecord, handler);
-    frame = Frame() + positionInRecord;
-  } else {
-    // Sequential input needs to read next record
-    if (endfileRecordNumber.has_value() &&
-        currentRecordNumber >= *endfileRecordNumber) {
-      handler.SignalEnd();
-      bytes = 0;
-      return nullptr;
+    if (positionInRecord >= *recordLength) {
+      if (modes.pad) {
+        return std::optional<char32_t>{' '};
+      }
+      handler.SignalEor();
+      return std::nullopt;
     }
-    offsetInFile = nextInputRecordFileOffset;
-    if (isUnformatted) {
-      frame = NextSequentialUnformattedInputRecord(bytes, handler);
-    } else {
-      frame = NextSequentialFormattedInputRecord(bytes, handler);
-    }
+    chunk = *recordLength - positionInRecord;
   }
-  if (frame && bytes < wanted) {
-    handler.SignalEor();
+  auto got{ReadFrame(offsetInFile + positionInRecord, chunk, handler)};
+  if (got <= 0) {
+    return std::nullopt;
   }
-  return frame;
+  const char *frame{Frame()};
+  if (isUTF8) {
+    // TODO: UTF-8 decoding
+  }
+  return *frame;
 }
 
 void ExternalFileUnit::SetLeftTabLimit() {
@@ -183,14 +175,20 @@ bool ExternalFileUnit::AdvanceRecord(IoErrorHandler &handler) {
   bool ok{true};
   if (isReading_) {
     if (access == Access::Sequential) {
-      recordLength.reset();
+      if (isUnformatted) {
+        NextSequentialUnformattedInputRecord(handler);
+      } else {
+        NextSequentialFormattedInputRecord(handler);
+      }
     }
-  } else if (recordLength.has_value()) {  // fill fixed-size record
-    ok &= SetPositionInRecord(*recordLength, handler);
-  } else if (!isUnformatted) {
-    ok &= SetPositionInRecord(furthestPositionInRecord, handler);
-    ok &= Emit("\n", 1, handler);  // TODO: Windows CR+LF
-    offsetInFile += furthestPositionInRecord;
+  } else {
+    if (recordLength.has_value()) {  // fill fixed-size record
+      ok &= SetPositionInRecord(*recordLength, handler);
+    } else if (!isUnformatted) {
+      ok &= SetPositionInRecord(furthestPositionInRecord, handler);
+      ok &= Emit("\n", 1, handler);  // TODO: Windows CR+LF
+      offsetInFile += furthestPositionInRecord;
+    }
   }
   ++currentRecordNumber;
   positionInRecord = 0;
@@ -222,58 +220,92 @@ void ExternalFileUnit::EndIoStatement() {
   lock_.Drop();
 }
 
-const char *ExternalFileUnit::NextSequentialUnformattedInputRecord(
-    std::size_t &bytes, IoErrorHandler &handler) {
-  std::uint32_t header;
-  // Retain previous footer in frame for more efficient BACKSPACE
-  std::size_t retain{std::min<std::size_t>(offsetInFile, sizeof header)};
-  std::size_t want{retain + sizeof header};
-  std::size_t got{ReadFrame(offsetInFile - retain, want, handler)};
-  if (got >= want) {
+void ExternalFileUnit::NextSequentialUnformattedInputRecord(
+    IoErrorHandler &handler) {
+  std::int32_t header{0}, footer{0};
+  // Retain previous footer (if any) in frame for more efficient BACKSPACE
+  std::size_t retain{sizeof header};
+  if (recordLength.has_value()) {
+    // not first record - advance to next
+    ++currentRecordNumber;
+    if (endfileRecordNumber && currentRecordNumber >= *endfileRecordNumber) {
+      handler.SignalEnd();
+      return;
+    }
+    offsetInFile += *recordLength + 2 * sizeof header;
+  } else {
+    retain = 0;
+  }
+  std::size_t need{retain + sizeof header};
+  std::size_t got{ReadFrame(offsetInFile - retain, need, handler)};
+  const char *error{nullptr};
+  if (got < need) {
+    if (got == retain) {
+      handler.SignalEnd();
+    } else {
+      error = "Unformatted sequential file input failed at record #%jd (file "
+              "offset %jd): truncated record header";
+    }
+  } else {
     std::memcpy(&header, Frame() + retain, sizeof header);
-    want = retain + header + 2 * sizeof header;
-    got = ReadFrame(offsetInFile - retain, want, handler);
-    if (got >= want) {
+    need = retain + header + 2 * sizeof header;
+    got = ReadFrame(
+        offsetInFile - retain, need + sizeof header /* next one */, handler);
+    if (got < need) {
+      error = "Unformatted sequential file input failed at record #%jd (file "
+              "offset %jd): hit EOF reading record with length %jd bytes";
+    } else {
       const char *start{Frame() + retain + sizeof header};
-      if (std::memcmp(start - sizeof header, start + header, sizeof header) ==
-          0) {
+      std::memcpy(&footer, start + header, sizeof footer);
+      if (footer != header) {
+        error = "Unformatted sequential file input failed at record #%jd (file "
+                "offset %jd): record header has length %jd that does not match "
+                "record footer (%jd)";
+      } else {
         recordLength = header;
-        nextInputRecordFileOffset = offsetInFile + header + 2 * sizeof header;
-        positionInRecord = sizeof header;
-        bytes = header;
-        return start;
       }
-      // TODO: signal corrupt file?
     }
   }
-  handler.SignalEnd();
-  bytes = 0;
-  return nullptr;
+  if (error) {
+    handler.Crash(error, static_cast<std::intmax_t>(currentRecordNumber),
+        static_cast<std::intmax_t>(offsetInFile),
+        static_cast<std::intmax_t>(header), static_cast<std::intmax_t>(footer));
+  }
+  positionInRecord = sizeof header;
 }
 
-const char *ExternalFileUnit::NextSequentialFormattedInputRecord(
-    std::size_t &bytes, IoErrorHandler &handler) {
-  auto chunk{std::max<std::size_t>(bytes, 256)};
+void ExternalFileUnit::NextSequentialFormattedInputRecord(
+    IoErrorHandler &handler) {
+  static constexpr std::size_t chunk{256};
   std::size_t length{0};
+  if (recordLength.has_value()) {
+    // not first record - advance to next
+    ++currentRecordNumber;
+    if (endfileRecordNumber && currentRecordNumber >= *endfileRecordNumber) {
+      handler.SignalEnd();
+      return;
+    }
+    if (Frame()[*recordLength] == '\r') {
+      ++*recordLength;
+    }
+    offsetInFile += *recordLength + 1;
+  }
   while (true) {
     std::size_t got{ReadFrame(offsetInFile, length + chunk, handler)};
     if (got <= length) {
       handler.SignalEnd();
-      bytes = 0;
-      return nullptr;
+      break;
     }
     const char *frame{Frame()};
     if (const char *nl{reinterpret_cast<const char *>(
             std::memchr(frame + length, '\n', chunk))}) {
-      length += nl - (frame + length);
-      nextInputRecordFileOffset = offsetInFile + length + 1;
-      if (length > 0 && frame[length - 1] == '\r') {
-        --length;
+      recordLength = nl - (frame + length) + 1;
+      if (*recordLength > 0 && frame[*recordLength - 1] == '\r') {
+        --*recordLength;
       }
-      recordLength = length;
-      bytes = length;
-      return frame;
+      return;
     }
+    length += got;
   }
 }
 }

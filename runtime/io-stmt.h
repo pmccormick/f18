@@ -48,7 +48,7 @@ public:
   // which may not have good support in some use cases.
   DataEdit GetNextDataEdit(int = 1);
   bool Emit(const char *, std::size_t);
-  const char *View(std::size_t &bytes);
+  std::optional<char32_t> NextChar();
   bool AdvanceRecord(int = 1);
   bool HandleRelativePosition(std::int64_t);
   int EndIoStatement();
@@ -70,6 +70,7 @@ public:
 
   bool EmitRepeated(char, std::size_t);
   bool EmitField(const char *, std::size_t length, std::size_t width);
+  std::optional<char32_t> NextInField(std::size_t &remaining);
 
 private:
   std::variant<std::reference_wrapper<OpenStatementState>,
@@ -125,7 +126,7 @@ public:
       const Descriptor &, const char *sourceFile = nullptr, int sourceLine = 0);
   int EndIoStatement();
   bool Emit(const CharType *, std::size_t chars /* not bytes */);
-  const CharType *View(std::size_t &chars);
+  std::optional<char32_t> NextChar();
   bool AdvanceRecord(int = 1);
   ConnectionState &GetConnectionState() { return unit_; }
   MutableModes &mutableModes() { return unit_.modes; }
@@ -210,7 +211,7 @@ public:
   bool Emit(const char *, std::size_t chars /* not bytes */);
   bool Emit(const char16_t *, std::size_t chars /* not bytes */);
   bool Emit(const char32_t *, std::size_t chars /* not bytes */);
-  const char *View(std::size_t &bytes /* not chars */);
+  std::optional<char32_t> NextChar();
   bool AdvanceRecord(int = 1);
   bool HandleRelativePosition(std::int64_t);
   bool HandleAbsolutePosition(std::int64_t);

@@ -62,7 +62,7 @@ public:
   }
 
   bool Emit(const char *, std::size_t bytes, IoErrorHandler &);
-  const char *View(std::size_t &bytes, IoErrorHandler &);
+  std::optional<char32_t> NextChar(IoErrorHandler &);
   void SetLeftTabLimit();
   bool AdvanceRecord(IoErrorHandler &);
   bool HandleAbsolutePosition(std::int64_t, IoErrorHandler &);
@@ -74,10 +74,8 @@ public:
 private:
   static UnitMap &GetUnitMap();
   bool SetPositionInRecord(std::int64_t, IoErrorHandler &);
-  const char *NextSequentialUnformattedInputRecord(
-      std::size_t &, IoErrorHandler &);
-  const char *NextSequentialFormattedInputRecord(
-      std::size_t &, IoErrorHandler &);
+  void NextSequentialUnformattedInputRecord(IoErrorHandler &);
+  void NextSequentialFormattedInputRecord(IoErrorHandler &);
 
   int unitNumber_{-1};
   bool isReading_{false};

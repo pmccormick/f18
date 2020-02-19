@@ -127,7 +127,7 @@ static void Test(int n, const char *format, Results &&expect, int repeat = 1) {
     for (int j{0}; j < n; ++j) {
       context.Report(control.GetNextDataEdit(context, repeat));
     }
-    control.FinishOutput(context);
+    control.Finish(context);
   } catch (const std::string &crash) {
     context.results.push_back("Crash:"s + crash);
   }

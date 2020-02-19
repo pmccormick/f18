@@ -21,16 +21,10 @@ bool EditIntegerInput(
     return false;
   }
   std::size_t width{static_cast<std::size_t>(*edit.width)};
-  std::size_t got{width};
-  const char *field{io.View(got)};
-  if (!field) {
-    return false;
-  }
-  const char *end{field + got};
-  const char *p{field};
-  io.HandleRelativePosition(got);
-  while (p < end && *p == ' ') {
-    ++p;
+  std::size_t remaining{width};
+  std::optional<char> next{io.NextInField(remaining)};
+  while (next && *next == ' ') {
+    next = io.NextInField(remaining);
   }
   common::UnsignedInt128 value;
   int base{10};
@@ -47,8 +41,9 @@ bool EditIntegerInput(
         edit.descriptor);
     return false;
   }
-  for (; p < end; ++p) {
-    char ch{*p};
+  while (next) {
+    char ch{*next};
+    next = io.NextInField(remaining);
     if (ch == ' ') {
       if (!(edit.modes.editingFlags & blankZero)) {
         continue;

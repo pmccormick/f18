@@ -30,9 +30,9 @@ bool DefaultFormatControlCallbacks::Emit(const char32_t *, std::size_t) {
         "I/O statement");
   return {};
 }
-const char *DefaultFormatControlCallbacks::View(std::size_t &) {
-  Crash(
-      "DefaultFormatControlCallbacks::View called for non-input I/O statement");
+std::optional<char32_t> DefaultFormatControlCallbacks::NextChar() {
+  Crash("DefaultFormatControlCallbacks::NextChar() called for non-input I/O "
+        "statement");
   return {};
 }
 bool DefaultFormatControlCallbacks::AdvanceRecord(int) {

@@ -81,33 +81,26 @@ bool InternalDescriptorUnit<isInput>::Emit(
 }
 
 template<bool isInput>
-const char *InternalDescriptorUnit<isInput>::View(
-    std::size_t &chars, IoErrorHandler &handler) {
+std::optional<char32_t> InternalDescriptorUnit<isInput>::NextChar(
+    IoErrorHandler &handler) {
   if constexpr (!isInput) {
     handler.Crash(
-        "InternalDescriptorUnit<false>::View() called for output statement");
-    chars = 0;
-    return nullptr;
+        "InternalDescriptorUnit<false>::Next() called for output statement");
+    return std::nullopt;
   }
   if (currentRecordNumber >= endfileRecordNumber.value_or(0)) {
     handler.SignalEnd();
-    chars = 0;
-    return nullptr;
+    return std::nullopt;
   }
-  char *record{descriptor().template Element<char>(at_)};
-  std::size_t want{std::max<std::size_t>(
-      chars, recordLength.value_or(positionInRecord) - positionInRecord)};
-  auto furthestAfter{std::max(furthestPositionInRecord,
-      positionInRecord + static_cast<std::int64_t>(want))};
-  const char *data{record + positionInRecord};
-  if (furthestAfter > static_cast<std::int64_t>(recordLength.value_or(0))) {
-    handler.SignalEor();
-    furthestAfter = recordLength.value_or(0);
+  if (recordLength.has_value() &&
+      positionInRecord >= static_cast<std::int64_t>(*recordLength)) {
+    return modes.pad ? std::optional<char32_t>{' '} : std::nullopt;
   }
-  chars = std::max(std::int64_t{0}, furthestAfter - positionInRecord);
-  positionInRecord += chars;
-  furthestPositionInRecord = furthestAfter;
-  return data;
+  if (isUTF8) {
+    // TODO: UTF-8 decoding
+  }
+  const char *record{descriptor().template Element<char>(at_)};
+  return record[positionInRecord];
 }
 
 template<bool isInput>
