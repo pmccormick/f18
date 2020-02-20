@@ -32,8 +32,6 @@ public:
   bool Emit(const char *, std::size_t bytes, IoErrorHandler &);
   std::optional<char32_t> NextChar(IoErrorHandler &);
   bool AdvanceRecord(IoErrorHandler &);
-  bool HandleAbsolutePosition(std::int64_t, IoErrorHandler &);
-  bool HandleRelativePosition(std::int64_t, IoErrorHandler &);
 
 private:
   Descriptor &descriptor() { return staticDescriptor_.descriptor(); }

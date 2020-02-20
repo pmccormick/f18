@@ -329,7 +329,7 @@ bool RealOutputEditing<binaryPrecision>::Edit(const DataEdit &edit) {
     if (edit.IsListDirected()) {
       return EditListDirectedOutput(edit);
     }
-    io_.GetIoErrorHandler().Crash(
+    io_.GetIoErrorHandler().SignalError(IoErrorInFormat,
         "Data edit descriptor '%c' may not be used with a REAL data item",
         edit.descriptor);
     return false;

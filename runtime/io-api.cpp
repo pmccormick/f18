@@ -110,9 +110,11 @@ Cookie BeginExternalListIO(
       ExternalFileUnit::LookUpOrCrash(unitNumber, terminator)};
   if (unit.access == Access::Direct) {
     terminator.Crash("List-directed I/O attempted on direct access file");
+    return nullptr;
   }
   if (unit.isUnformatted) {
     terminator.Crash("List-directed I/O attempted on unformatted file");
+    return nullptr;
   }
   IoStatementState &io{
       unit.BeginIoStatement<ExternalListIoStatementState<isInput>>(
@@ -144,6 +146,7 @@ Cookie BeginExternalFormattedIO(const char *format, std::size_t formatLength,
       ExternalFileUnit::LookUpOrCrash(unitNumber, terminator)};
   if (unit.isUnformatted) {
     terminator.Crash("Formatted I/O attempted on unformatted file");
+    return nullptr;
   }
   IoStatementState &io{
       unit.BeginIoStatement<ExternalFormattedIoStatementState<isInput>>(
@@ -234,8 +237,8 @@ Cookie IONAME(BeginClose)(
 
 // Control list items
 
-void IONAME(EnableHandlers)(
-    Cookie cookie, bool hasIoStat, bool hasErr, bool hasEnd, bool hasEor) {
+void IONAME(EnableHandlers)(Cookie cookie, bool hasIoStat, bool hasErr,
+    bool hasEnd, bool hasEor, bool hasIoMsg) {
   IoErrorHandler &handler{cookie->GetIoErrorHandler()};
   if (hasIoStat) {
     handler.HasIoStat();
@@ -249,17 +252,20 @@ void IONAME(EnableHandlers)(
   if (hasEor) {
     handler.HasEorLabel();
   }
+  if (hasIoMsg) {
+    handler.HasIoMsg();
+  }
 }
 
 static bool YesOrNo(const char *keyword, std::size_t length, const char *what,
-    const Terminator &terminator) {
+    IoErrorHandler &handler) {
   static const char *keywords[]{"YES", "NO", nullptr};
   switch (IdentifyValue(keyword, length, keywords)) {
   case 0: return true;
   case 1: return false;
   default:
-    terminator.Crash(
-        "Invalid %s='%.*s'", what, static_cast<int>(length), keyword);
+    handler.SignalError(IoErrorInKeyword, "Invalid %s='%.*s'", what,
+        static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -271,7 +277,7 @@ bool IONAME(SetAdvance)(
   connection.nonAdvancing =
       !YesOrNo(keyword, length, "ADVANCE", io.GetIoErrorHandler());
   if (connection.nonAdvancing && connection.access == Access::Direct) {
-    io.GetIoErrorHandler().Crash(
+    io.GetIoErrorHandler().SignalError(
         "Non-advancing I/O attempted on direct access file");
   }
   return true;
@@ -285,8 +291,8 @@ bool IONAME(SetBlank)(Cookie cookie, const char *keyword, std::size_t length) {
   case 0: connection.modes.editingFlags &= ~blankZero; return true;
   case 1: connection.modes.editingFlags |= blankZero; return true;
   default:
-    io.GetIoErrorHandler().Crash(
-        "Invalid BLANK='%.*s'", static_cast<int>(length), keyword);
+    io.GetIoErrorHandler().SignalError(IoErrorInKeyword, "Invalid BLANK='%.*s'",
+        static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -300,7 +306,7 @@ bool IONAME(SetDecimal)(
   case 0: connection.modes.editingFlags |= decimalComma; return true;
   case 1: connection.modes.editingFlags &= ~decimalComma; return true;
   default:
-    io.GetIoErrorHandler().Crash(
+    io.GetIoErrorHandler().SignalError(IoErrorInKeyword,
         "Invalid DECIMAL='%.*s'", static_cast<int>(length), keyword);
     return false;
   }
@@ -315,8 +321,8 @@ bool IONAME(SetDelim)(Cookie cookie, const char *keyword, std::size_t length) {
   case 1: connection.modes.delim = '"'; return true;
   case 2: connection.modes.delim = '\0'; return true;
   default:
-    io.GetIoErrorHandler().Crash(
-        "Invalid DELIM='%.*s'", static_cast<int>(length), keyword);
+    io.GetIoErrorHandler().SignalError(IoErrorInKeyword, "Invalid DELIM='%.*s'",
+        static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -333,11 +339,12 @@ bool IONAME(SetPos)(Cookie cookie, std::int64_t pos) {
   IoStatementState &io{*cookie};
   ConnectionState &connection{io.GetConnectionState()};
   if (connection.access != Access::Stream) {
-    io.GetIoErrorHandler().Crash("REC= may not appear unless ACCESS='STREAM'");
+    io.GetIoErrorHandler().SignalError(
+        "REC= may not appear unless ACCESS='STREAM'");
     return false;
   }
   if (pos < 1) {
-    io.GetIoErrorHandler().Crash(
+    io.GetIoErrorHandler().SignalError(
         "POS=%zd is invalid", static_cast<std::intmax_t>(pos));
     return false;
   }
@@ -349,15 +356,16 @@ bool IONAME(SetRec)(Cookie cookie, std::int64_t rec) {
   IoStatementState &io{*cookie};
   ConnectionState &connection{io.GetConnectionState()};
   if (connection.access != Access::Direct) {
-    io.GetIoErrorHandler().Crash("REC= may not appear unless ACCESS='DIRECT'");
+    io.GetIoErrorHandler().SignalError(
+        "REC= may not appear unless ACCESS='DIRECT'");
     return false;
   }
   if (!connection.recordLength) {
-    io.GetIoErrorHandler().Crash("RECL= was not specified");
+    io.GetIoErrorHandler().SignalError("RECL= was not specified");
     return false;
   }
   if (rec < 1) {
-    io.GetIoErrorHandler().Crash(
+    io.GetIoErrorHandler().SignalError(
         "REC=%zd is invalid", static_cast<std::intmax_t>(rec));
     return false;
   }
@@ -381,8 +389,8 @@ bool IONAME(SetRound)(Cookie cookie, const char *keyword, std::size_t length) {
     connection.modes.round = executionEnvironment.defaultOutputRoundingMode;
     return true;
   default:
-    io.GetIoErrorHandler().Crash(
-        "Invalid ROUND='%.*s'", static_cast<int>(length), keyword);
+    io.GetIoErrorHandler().SignalError(IoErrorInKeyword, "Invalid ROUND='%.*s'",
+        static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -398,8 +406,8 @@ bool IONAME(SetSign)(Cookie cookie, const char *keyword, std::size_t length) {
     connection.modes.editingFlags &= ~signPlus;
     return true;
   default:
-    io.GetIoErrorHandler().Crash(
-        "Invalid SIGN='%.*s'", static_cast<int>(length), keyword);
+    io.GetIoErrorHandler().SignalError(IoErrorInKeyword, "Invalid SIGN='%.*s'",
+        static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -419,11 +427,12 @@ bool IONAME(SetAccess)(Cookie cookie, const char *keyword, std::size_t length) {
   case 1: access = Access::Direct; break;
   case 2: access = Access::Stream; break;
   default:
-    open->Crash("Invalid ACCESS='%.*s'", static_cast<int>(length), keyword);
+    open->SignalError(IoErrorInKeyword, "Invalid ACCESS='%.*s'",
+        static_cast<int>(length), keyword);
   }
   if (access != connection.access) {
     if (open->wasExtant()) {
-      open->Crash("ACCESS= may not be changed on an open unit");
+      open->SignalError("ACCESS= may not be changed on an open unit");
     }
     connection.access = access;
   }
@@ -445,13 +454,14 @@ bool IONAME(SetAction)(Cookie cookie, const char *keyword, std::size_t length) {
   case 1: mayRead = false; break;
   case 2: break;
   default:
-    open->Crash("Invalid ACTION='%.*s'", static_cast<int>(length), keyword);
+    open->SignalError(IoErrorInKeyword, "Invalid ACTION='%.*s'",
+        static_cast<int>(length), keyword);
     return false;
   }
   if (mayRead != open->unit().mayRead() ||
       mayWrite != open->unit().mayWrite()) {
     if (open->wasExtant()) {
-      open->Crash("ACTION= may not be changed on an open unit");
+      open->SignalError("ACTION= may not be changed on an open unit");
     }
     open->unit().set_mayRead(mayRead);
     open->unit().set_mayWrite(mayWrite);
@@ -472,8 +482,8 @@ bool IONAME(SetAsynchronous)(
   case 0: open->unit().set_mayAsynchronous(true); return true;
   case 1: open->unit().set_mayAsynchronous(false); return true;
   default:
-    open->Crash(
-        "Invalid ASYNCHRONOUS='%.*s'", static_cast<int>(length), keyword);
+    open->SignalError(IoErrorInKeyword, "Invalid ASYNCHRONOUS='%.*s'",
+        static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -492,11 +502,12 @@ bool IONAME(SetEncoding)(
   case 0: isUTF8 = true; break;
   case 1: isUTF8 = false; break;
   default:
-    open->Crash("Invalid ENCODING='%.*s'", static_cast<int>(length), keyword);
+    open->SignalError(IoErrorInKeyword, "Invalid ENCODING='%.*s'",
+        static_cast<int>(length), keyword);
   }
   if (isUTF8 != open->unit().isUTF8) {
     if (open->wasExtant()) {
-      open->Crash("ENCODING= may not be changed on an open unit");
+      open->SignalError("ENCODING= may not be changed on an open unit");
     }
     open->unit().isUTF8 = isUTF8;
   }
@@ -516,11 +527,12 @@ bool IONAME(SetForm)(Cookie cookie, const char *keyword, std::size_t length) {
   case 0: isUnformatted = false; break;
   case 1: isUnformatted = true; break;
   default:
-    open->Crash("Invalid FORM='%.*s'", static_cast<int>(length), keyword);
+    open->SignalError(IoErrorInKeyword, "Invalid FORM='%.*s'",
+        static_cast<int>(length), keyword);
   }
   if (isUnformatted != open->unit().isUnformatted) {
     if (open->wasExtant()) {
-      open->Crash("FORM= may not be changed on an open unit");
+      open->SignalError("FORM= may not be changed on an open unit");
     }
     open->unit().isUnformatted = isUnformatted;
   }
@@ -541,7 +553,7 @@ bool IONAME(SetPosition)(
   case 1: open->set_position(Position::Rewind); return true;
   case 2: open->set_position(Position::Append); return true;
   default:
-    io.GetIoErrorHandler().Crash(
+    io.GetIoErrorHandler().SignalError(IoErrorInKeyword,
         "Invalid POSITION='%.*s'", static_cast<int>(length), keyword);
   }
   return true;
@@ -555,11 +567,11 @@ bool IONAME(SetRecl)(Cookie cookie, std::size_t n) {
         "SetRecl() called when not in an OPEN statement");
   }
   if (n <= 0) {
-    io.GetIoErrorHandler().Crash("RECL= must be greater than zero");
+    io.GetIoErrorHandler().SignalError("RECL= must be greater than zero");
   }
   if (open->wasExtant() && open->unit().recordLength.has_value() &&
       *open->unit().recordLength != static_cast<std::int64_t>(n)) {
-    open->Crash("RECL= may not be changed for an open unit");
+    open->SignalError("RECL= may not be changed for an open unit");
   }
   open->unit().recordLength = n;
   return true;
@@ -577,7 +589,7 @@ bool IONAME(SetStatus)(Cookie cookie, const char *keyword, std::size_t length) {
     case 3: open->set_status(OpenStatus::Replace); return true;
     case 4: open->set_status(OpenStatus::Unknown); return true;
     default:
-      io.GetIoErrorHandler().Crash(
+      io.GetIoErrorHandler().SignalError(IoErrorInKeyword,
           "Invalid STATUS='%.*s'", static_cast<int>(length), keyword);
     }
     return false;
@@ -588,7 +600,7 @@ bool IONAME(SetStatus)(Cookie cookie, const char *keyword, std::size_t length) {
     case 0: close->set_status(CloseStatus::Keep); return true;
     case 1: close->set_status(CloseStatus::Delete); return true;
     default:
-      io.GetIoErrorHandler().Crash(
+      io.GetIoErrorHandler().SignalError(IoErrorInKeyword,
           "Invalid STATUS='%.*s'", static_cast<int>(length), keyword);
     }
     return false;
@@ -630,7 +642,7 @@ bool IONAME(GetNewUnit)(Cookie cookie, int &unit, int kind) {
         "GetNewUnit() called when not in an OPEN statement");
   }
   if (!SetInteger(unit, kind, open->unit().unitNumber())) {
-    open->Crash("GetNewUnit(): Bad INTEGER kind(%d) for result");
+    open->SignalError("GetNewUnit(): Bad INTEGER kind(%d) for result");
   }
   return true;
 }
@@ -740,8 +752,9 @@ bool IONAME(OutputAscii)(Cookie cookie, const char *x, std::size_t length) {
     // Formatted default CHARACTER output
     DataEdit edit{io.GetNextDataEdit()};
     if (edit.descriptor != 'A' && edit.descriptor != 'G') {
-      io.GetIoErrorHandler().Crash("Data edit descriptor '%c' may not be used "
-                                   "with a CHARACTER data item",
+      io.GetIoErrorHandler().SignalError(IoErrorInFormat,
+          "Data edit descriptor '%c' may not be used with a CHARACTER data "
+          "item",
           edit.descriptor);
       return false;
     }
@@ -770,7 +783,7 @@ bool IONAME(OutputLogical)(Cookie cookie, bool truth) {
   } else {
     DataEdit edit{io.GetNextDataEdit()};
     if (edit.descriptor != 'L' && edit.descriptor != 'G') {
-      io.GetIoErrorHandler().Crash(
+      io.GetIoErrorHandler().SignalError(IoErrorInFormat,
           "Data edit descriptor '%c' may not be used with a LOGICAL data item",
           edit.descriptor);
       return false;

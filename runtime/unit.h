@@ -65,15 +65,11 @@ public:
   std::optional<char32_t> NextChar(IoErrorHandler &);
   void SetLeftTabLimit();
   bool AdvanceRecord(IoErrorHandler &);
-  bool HandleAbsolutePosition(std::int64_t, IoErrorHandler &);
-  bool HandleRelativePosition(std::int64_t, IoErrorHandler &);
-
   void FlushIfTerminal(IoErrorHandler &);
   void EndIoStatement();
 
 private:
   static UnitMap &GetUnitMap();
-  bool SetPositionInRecord(std::int64_t, IoErrorHandler &);
   void NextSequentialUnformattedInputRecord(IoErrorHandler &);
   void NextSequentialFormattedInputRecord(IoErrorHandler &);
 

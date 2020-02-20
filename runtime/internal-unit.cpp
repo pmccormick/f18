@@ -60,8 +60,11 @@ bool InternalDescriptorUnit<isInput>::Emit(
         "InternalDescriptorUnit<true>::Emit() called for an input statement");
     return false;
   }
+  if (bytes <= 0) {
+    return true;
+  }
   if (currentRecordNumber >= endfileRecordNumber.value_or(0)) {
-    handler.SignalEnd();
+    handler.SignalError(IoErrorInternalWriteOverrun);
     return false;
   }
   char *record{descriptor().template Element<char>(at_)};
@@ -69,10 +72,13 @@ bool InternalDescriptorUnit<isInput>::Emit(
       positionInRecord + static_cast<std::int64_t>(bytes))};
   bool ok{true};
   if (furthestAfter > static_cast<std::int64_t>(recordLength.value_or(0))) {
-    handler.SignalEor();
+    handler.SignalError(IoErrorRecordWriteOverrun);
     furthestAfter = recordLength.value_or(0);
     bytes = std::max(std::int64_t{0}, furthestAfter - positionInRecord);
     ok = false;
+  } else if (positionInRecord > furthestPositionInRecord) {
+    std::fill_n(record + furthestPositionInRecord,
+        positionInRecord - furthestPositionInRecord, ' ');
   }
   std::memcpy(record + positionInRecord, data, bytes);
   positionInRecord += bytes;
@@ -92,6 +98,15 @@ std::optional<char32_t> InternalDescriptorUnit<isInput>::NextChar(
     handler.SignalEnd();
     return std::nullopt;
   }
+  if (positionInRecord > recordLength.value_or(positionInRecord)) {
+    if (nonAdvancing) {
+      handler.SignalEor();
+    }
+    if (modes.pad) {
+      return ' ';
+    }
+    return std::nullopt;
+  }
   if (isUTF8) {
     // TODO: UTF-8 decoding
   }
@@ -105,42 +120,19 @@ bool InternalDescriptorUnit<isInput>::AdvanceRecord(IoErrorHandler &handler) {
     handler.SignalEnd();
     return false;
   }
-  if (!HandleAbsolutePosition(recordLength.value_or(0), handler)) {
-    return false;
+  if constexpr (!isInput) {
+    if (furthestPositionInRecord <
+        recordLength.value_or(furthestPositionInRecord)) {
+      char *record{descriptor().template Element<char>(at_)};
+      std::fill_n(record + furthestPositionInRecord,
+          *recordLength - furthestPositionInRecord, ' ');
+    }
   }
   ++currentRecordNumber;
   descriptor().IncrementSubscripts(at_);
   positionInRecord = 0;
   furthestPositionInRecord = 0;
   return true;
-}
-
-template<bool isInput>
-bool InternalDescriptorUnit<isInput>::HandleAbsolutePosition(
-    std::int64_t n, IoErrorHandler &handler) {
-  n = std::max<std::int64_t>(0, n);
-  bool ok{true};
-  if (n > static_cast<std::int64_t>(recordLength.value_or(n))) {
-    handler.SignalEor();
-    n = *recordLength;
-    ok = false;
-  }
-  if (n > furthestPositionInRecord && ok) {
-    if constexpr (!isInput) {
-      char *record{descriptor().template Element<char>(at_)};
-      std::fill_n(
-          record + furthestPositionInRecord, n - furthestPositionInRecord, ' ');
-    }
-    furthestPositionInRecord = n;
-  }
-  positionInRecord = n;
-  return ok;
-}
-
-template<bool isInput>
-bool InternalDescriptorUnit<isInput>::HandleRelativePosition(
-    std::int64_t n, IoErrorHandler &handler) {
-  return HandleAbsolutePosition(positionInRecord + n, handler);
 }
 
 template class InternalDescriptorUnit<false>;

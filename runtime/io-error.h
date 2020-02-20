@@ -9,15 +9,38 @@
 // Distinguishes I/O error conditions; fatal ones lead to termination,
 // and those that the user program has chosen to handle are recorded
 // so that the highest-priority one can be returned as IOSTAT=.
+// IOSTAT error codes are raw errno values augmented with values for
+// Fortran-specific errors.
 
 #ifndef FORTRAN_RUNTIME_IO_ERROR_H_
 #define FORTRAN_RUNTIME_IO_ERROR_H_
 
+#include "magic-numbers.h"
+#include "memory.h"
 #include "terminator.h"
 #include <cinttypes>
 
 namespace Fortran::runtime::io {
 
+enum IoErrorNumber {
+  // Errors exposed in ISO_Fortran_env or elsewhere as negative values
+  IoErrorEnd = FORTRAN_RUNTIME_IOSTAT_END,
+  IoErrorEor = FORTRAN_RUNTIME_IOSTAT_EOR,
+  IoErrorUnflushable = FORTRAN_RUNTIME_IOSTAT_FLUSH,
+  // Errors exposed in ISO_Fortran_env or elsewhere as positive values
+  // greater than any errno
+  IoErrorInquireInternal = FORTRAN_RUNTIME_IOSTAT_INQUIRE_INTERNAL_UNIT,
+  // Errors not exposed in ISO_Fortran_env
+  IoErrorRecordWriteOverrun = 301,
+  IoErrorRecordReadOverrun,
+  IoErrorInternalWriteOverrun,
+  IoErrorInFormat,
+  IoErrorInKeyword,
+  IoErrorInStatement,
+  IoErrorGeneric,
+};
+
+// See 12.11 in Fortran 2018
 class IoErrorHandler : public Terminator {
 public:
   using Terminator::Terminator;
@@ -27,13 +50,22 @@ public:
   void HasErrLabel() { flags_ |= hasErr; }
   void HasEndLabel() { flags_ |= hasEnd; }
   void HasEorLabel() { flags_ |= hasEor; }
+  void HasIoMsg() { flags_ |= hasIoMsg; }
 
+  bool InError() const { return ioStat_ != 0; }
+
+  void SignalError(int iostatOrErrno, const char *msg, ...);
   void SignalError(int iostatOrErrno);
-  void SignalErrno();
-  void SignalEnd();
-  void SignalEor();
+  template<typename... X> void SignalError(const char *msg, X &&... xs) {
+    SignalError(IoErrorGeneric, msg, std::forward<X>(xs)...);
+  }
+
+  void SignalErrno();  // SignalError(errno)
+  void SignalEnd();  // input only; EOF on internal write is an error
+  void SignalEor();  // non-advancing input only; EOR on write is an error
 
   int GetIoStat() const { return ioStat_; }
+  bool GetIoMsg(char *, std::size_t);
 
 private:
   enum Flag : std::uint8_t {
@@ -41,9 +73,11 @@ private:
     hasErr = 2,  // ERR=
     hasEnd = 4,  // END=
     hasEor = 8,  // EOR=
+    hasIoMsg = 16,  // IOMSG=
   };
   std::uint8_t flags_{0};
   int ioStat_{0};
+  OwningPtr<char> ioMsg_;
 };
 
 }

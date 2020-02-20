@@ -1,7 +1,7 @@
 // Tests basic FORMAT string traversal
 
 #include "../runtime/format-implementation.h"
-#include "../runtime/terminator.h"
+#include "../runtime/io-error.h"
 #include <cstdarg>
 #include <cstring>
 #include <iostream>
@@ -16,16 +16,16 @@ static int failures{0};
 using Results = std::vector<std::string>;
 
 // A test harness context for testing FormatControl
-class TestFormatContext : public Terminator {
+class TestFormatContext : public IoErrorHandler {
 public:
   using CharType = char;
-  TestFormatContext() : Terminator{"format.cpp", 1} {}
+  TestFormatContext() : IoErrorHandler{"format.cpp", 1} {}
   bool Emit(const char *, std::size_t);
   bool Emit(const char16_t *, std::size_t);
   bool Emit(const char32_t *, std::size_t);
   bool AdvanceRecord(int = 1);
-  bool HandleRelativePosition(std::int64_t);
-  bool HandleAbsolutePosition(std::int64_t);
+  void HandleRelativePosition(std::int64_t);
+  void HandleAbsolutePosition(std::int64_t);
   void Report(const DataEdit &);
   void Check(Results &);
   Results results;
@@ -44,6 +44,12 @@ private:
   std::vsnprintf(buffer, sizeof buffer, message, ap);
   va_end(ap);
   throw std::string{buffer};
+}
+// Duplicate the runtime's CheckFailed() to avoid pulling in its own Check()
+[[noreturn]] void Fortran::runtime::Terminator::CheckFailed(
+    const char *predicate, const char *file, int line) const {
+  Crash("Internal error: RUNTIME_CHECK(%s) failed at %s(%d)", predicate, file,
+      line);
 }
 
 bool TestFormatContext::Emit(const char *s, std::size_t len) {
@@ -67,18 +73,16 @@ bool TestFormatContext::AdvanceRecord(int n) {
   return true;
 }
 
-bool TestFormatContext::HandleAbsolutePosition(std::int64_t n) {
+void TestFormatContext::HandleAbsolutePosition(std::int64_t n) {
   results.push_back("T"s + std::to_string(n));
-  return true;
 }
 
-bool TestFormatContext::HandleRelativePosition(std::int64_t n) {
+void TestFormatContext::HandleRelativePosition(std::int64_t n) {
   if (n < 0) {
     results.push_back("TL"s + std::to_string(-n));
   } else {
     results.push_back(std::to_string(n) + 'X');
   }
-  return true;
 }
 
 void TestFormatContext::Report(const DataEdit &edit) {
@@ -128,6 +132,9 @@ static void Test(int n, const char *format, Results &&expect, int repeat = 1) {
       context.Report(control.GetNextDataEdit(context, repeat));
     }
     control.Finish(context);
+    if (int iostat{context.GetIoStat()}) {
+      context.Crash("GetIoStat() == %d", iostat);
+    }
   } catch (const std::string &crash) {
     context.results.push_back("Crash:"s + crash);
   }

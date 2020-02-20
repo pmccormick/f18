@@ -34,7 +34,7 @@ void OpenFile::Open(
   case OpenStatus::New: flags |= O_CREAT | O_EXCL; break;
   case OpenStatus::Scratch:
     if (path_.get()) {
-      handler.Crash("FILE= must not appear with STATUS='SCRATCH'");
+      handler.SignalError("FILE= must not appear with STATUS='SCRATCH'");
       path_.reset();
     }
     {
@@ -63,8 +63,9 @@ void OpenFile::Open(
     }
   }
   if (!path_.get()) {
-    handler.Crash(
+    handler.SignalError(
         "FILE= is required unless STATUS='OLD' and unit is connected");
+    return;
   }
   fd_ = ::open(path_.get(), flags, 0600);
   if (fd_ < 0) {

@@ -50,7 +50,7 @@ bool EditIntegerInput(
   case 'O': base = 8; break;
   case 'Z': base = 16; break;
   default:
-    io.GetIoErrorHandler().Crash(
+    io.GetIoErrorHandler().SignalError(IoErrorInFormat,
         "Data edit descriptor '%c' may not be used with an INTEGER data item",
         edit.descriptor);
     return false;
@@ -76,8 +76,9 @@ bool EditIntegerInput(
     } else if (base == 16 && ch >= 'a' && ch <= 'z') {
       digit = ch + 10 - 'a';
     } else {
-      io.GetIoErrorHandler().Crash(
+      io.GetIoErrorHandler().SignalError(
           "Bad character '%lc' in INTEGER input field", ch);
+      return false;
     }
     value *= base;
     value += digit;

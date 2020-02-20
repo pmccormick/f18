@@ -16,4 +16,12 @@ std::size_t ConnectionState::RemainingSpaceInRecord() const {
              executionEnvironment.listDirectedOutputLineLengthLimit) -
       positionInRecord;
 }
+
+void ConnectionState::HandleAbsolutePosition(std::int64_t n) {
+  positionInRecord = std::max(n, std::int64_t{0}) + leftTabLimit.value_or(0);
+}
+
+void ConnectionState::HandleRelativePosition(std::int64_t n) {
+  positionInRecord = std::max(leftTabLimit.value_or(0), positionInRecord + n);
+}
 }

@@ -39,17 +39,13 @@ bool DefaultFormatControlCallbacks::AdvanceRecord(int) {
   Crash("DefaultFormatControlCallbacks::AdvanceRecord() called unexpectedly");
   return {};
 }
-bool DefaultFormatControlCallbacks::HandleAbsolutePosition(std::int64_t) {
+void DefaultFormatControlCallbacks::HandleAbsolutePosition(std::int64_t) {
   Crash("DefaultFormatControlCallbacks::HandleAbsolutePosition() called for "
-        "non-formatted "
-        "I/O statement");
-  return {};
+        "non-formatted I/O statement");
 }
-bool DefaultFormatControlCallbacks::HandleRelativePosition(std::int64_t) {
+void DefaultFormatControlCallbacks::HandleRelativePosition(std::int64_t) {
   Crash("DefaultFormatControlCallbacks::HandleRelativePosition() called for "
-        "non-formatted "
-        "I/O statement");
-  return {};
+        "non-formatted I/O statement");
 }
 
 template class FormatControl<InternalFormattedIoStatementState<false>>;

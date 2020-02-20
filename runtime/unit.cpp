@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "unit.h"
+#include "io-error.h"
 #include "unit-map.h"
 
 namespace Fortran::runtime::io {
@@ -106,31 +107,14 @@ void ExternalFileUnit::CloseAll(IoErrorHandler &handler) {
   }
 }
 
-bool ExternalFileUnit::SetPositionInRecord(
-    std::int64_t n, IoErrorHandler &handler) {
-  n = std::max<std::int64_t>(0, n);
-  bool ok{true};
-  if (n > static_cast<std::int64_t>(recordLength.value_or(n))) {
-    handler.SignalEor();
-    n = *recordLength;
-    ok = false;
-  }
-  if (n > furthestPositionInRecord) {
-    if (!isReading_ && ok) {
-      WriteFrame(offsetInFile, n, handler);
-      std::fill_n(Frame() + furthestPositionInRecord,
-          n - furthestPositionInRecord, ' ');
-    }
-    furthestPositionInRecord = n;
-  }
-  positionInRecord = n;
-  return ok;
-}
-
 bool ExternalFileUnit::Emit(
     const char *data, std::size_t bytes, IoErrorHandler &handler) {
   auto furthestAfter{std::max(furthestPositionInRecord,
       positionInRecord + static_cast<std::int64_t>(bytes))};
+  if (furthestAfter > recordLength.value_or(furthestAfter)) {
+    handler.SignalError(IoErrorRecordWriteOverrun);
+    return false;
+  }
   WriteFrame(offsetInFile, furthestAfter, handler);
   std::memcpy(Frame() + positionInRecord, data, bytes);
   positionInRecord += bytes;
@@ -147,6 +131,11 @@ std::optional<char32_t> ExternalFileUnit::NextChar(IoErrorHandler &handler) {
   std::size_t chunk{256};  // for stream input
   if (recordLength.has_value()) {
     if (positionInRecord >= *recordLength) {
+      if (nonAdvancing) {
+        handler.SignalEor();
+      } else {
+        handler.SignalError(IoErrorRecordReadOverrun);
+      }
       return std::nullopt;
     }
     chunk = *recordLength - positionInRecord;
@@ -177,11 +166,16 @@ bool ExternalFileUnit::AdvanceRecord(IoErrorHandler &handler) {
         NextSequentialFormattedInputRecord(handler);
       }
     }
-  } else {
-    if (recordLength.has_value()) {  // fill fixed-size record
-      ok &= SetPositionInRecord(*recordLength, handler);
-    } else if (!isUnformatted) {
-      ok &= SetPositionInRecord(furthestPositionInRecord, handler);
+  } else if (!isUnformatted) {
+    if (recordLength.has_value()) {
+      // fill fixed-size record
+      if (furthestPositionInRecord < *recordLength) {
+        WriteFrame(offsetInFile, *recordLength, handler);
+        std::memset(Frame() + furthestPositionInRecord, ' ',
+            *recordLength - furthestPositionInRecord);
+      }
+    } else {
+      positionInRecord = furthestPositionInRecord + 1;
       ok &= Emit("\n", 1, handler);  // TODO: Windows CR+LF
       offsetInFile += furthestPositionInRecord;
     }
@@ -191,17 +185,6 @@ bool ExternalFileUnit::AdvanceRecord(IoErrorHandler &handler) {
   furthestPositionInRecord = 0;
   leftTabLimit.reset();
   return ok;
-}
-
-bool ExternalFileUnit::HandleAbsolutePosition(
-    std::int64_t n, IoErrorHandler &handler) {
-  return SetPositionInRecord(
-      std::max(n, std::int64_t{0}) + leftTabLimit.value_or(0), handler);
-}
-
-bool ExternalFileUnit::HandleRelativePosition(
-    std::int64_t n, IoErrorHandler &handler) {
-  return HandleAbsolutePosition(positionInRecord + n, handler);
 }
 
 void ExternalFileUnit::FlushIfTerminal(IoErrorHandler &handler) {
@@ -263,7 +246,7 @@ void ExternalFileUnit::NextSequentialUnformattedInputRecord(
     }
   }
   if (error) {
-    handler.Crash(error, static_cast<std::intmax_t>(currentRecordNumber),
+    handler.SignalError(error, static_cast<std::intmax_t>(currentRecordNumber),
         static_cast<std::intmax_t>(offsetInFile),
         static_cast<std::intmax_t>(header), static_cast<std::intmax_t>(footer));
   }

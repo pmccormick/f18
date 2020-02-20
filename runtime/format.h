@@ -13,7 +13,6 @@
 
 #include "environment.h"
 #include "io-error.h"
-#include "terminator.h"
 #include "flang/common/Fortran.h"
 #include "flang/decimal/decimal.h"
 #include <cinttypes>
@@ -68,8 +67,8 @@ struct DefaultFormatControlCallbacks : public IoErrorHandler {
   bool Emit(const char32_t *, std::size_t);
   std::optional<char32_t> NextChar();
   bool AdvanceRecord(int = 1);
-  bool HandleAbsolutePosition(std::int64_t);
-  bool HandleRelativePosition(std::int64_t);
+  void HandleAbsolutePosition(std::int64_t);
+  void HandleRelativePosition(std::int64_t);
 };
 
 // Generates a sequence of DataEdits from a FORMAT statement or
@@ -87,7 +86,7 @@ public:
   // Determines the max parenthesis nesting level by scanning and validating
   // the FORMAT string.
   static int GetMaxParenthesisNesting(
-      const Terminator &, const CharType *format, std::size_t formatLength);
+      IoErrorHandler &, const CharType *format, std::size_t formatLength);
 
   // For attempting to allocate in a user-supplied stack area
   static std::size_t GetNeededSize(int maxHeight) {
@@ -121,14 +120,15 @@ private:
     SkipBlanks();
     return offset_ < formatLength_ ? format_[offset_] : '\0';
   }
-  CharType GetNextChar(const Terminator &terminator) {
+  CharType GetNextChar(IoErrorHandler &handler) {
     SkipBlanks();
     if (offset_ >= formatLength_) {
-      terminator.Crash("FORMAT missing at least one ')'");
+      handler.SignalError(IoErrorInFormat, "FORMAT missing at least one ')'");
+      return '\n';
     }
     return format_[offset_++];
   }
-  int GetIntField(const Terminator &, CharType firstCh = '\0');
+  int GetIntField(IoErrorHandler &, CharType firstCh = '\0');
 
   // Advances through the FORMAT until the next data edit
   // descriptor has been found; handles control edit descriptors

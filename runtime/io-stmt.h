@@ -50,7 +50,7 @@ public:
   bool Emit(const char *, std::size_t);
   std::optional<char32_t> NextChar();
   bool AdvanceRecord(int = 1);
-  bool HandleRelativePosition(std::int64_t);
+  void HandleRelativePosition(std::int64_t);
   int EndIoStatement();
   ConnectionState &GetConnectionState();
   MutableModes &mutableModes();
@@ -154,8 +154,8 @@ public:
   DataEdit GetNextDataEdit(int maxRepeat = 1) {
     return format_.GetNextDataEdit(*this, maxRepeat);
   }
-  bool HandleRelativePosition(std::int64_t);
-  bool HandleAbsolutePosition(std::int64_t);
+  void HandleRelativePosition(std::int64_t);
+  void HandleAbsolutePosition(std::int64_t);
 
 private:
   IoStatementState ioStatementState_;  // points to *this
@@ -213,8 +213,8 @@ public:
   bool Emit(const char32_t *, std::size_t chars /* not bytes */);
   std::optional<char32_t> NextChar();
   bool AdvanceRecord(int = 1);
-  bool HandleRelativePosition(std::int64_t);
-  bool HandleAbsolutePosition(std::int64_t);
+  void HandleRelativePosition(std::int64_t);
+  void HandleAbsolutePosition(std::int64_t);
 };
 
 template<bool isInput, typename CHAR>

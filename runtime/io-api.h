@@ -172,7 +172,7 @@ Cookie IONAME(BeginInquireIoLength)(
 //   }
 //   if (EndIoStatement(cookie) == FORTRAN_RUTIME_IOSTAT_END) goto label666;
 void IONAME(EnableHandlers)(Cookie, bool hasIoStat = false, bool hasErr = false,
-    bool hasEnd = false, bool hasEor = false);
+    bool hasEnd = false, bool hasEor = false, bool hasIoMsg = false);
 
 // Control list options.  These return false on a error that the
 // Begin...() call has specified will be handled by the caller.

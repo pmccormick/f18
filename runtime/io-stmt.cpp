@@ -103,15 +103,15 @@ int InternalFormattedIoStatementState<isInput, CHAR>::EndIoStatement() {
 }
 
 template<bool isInput, typename CHAR>
-bool InternalFormattedIoStatementState<isInput, CHAR>::HandleAbsolutePosition(
+void InternalFormattedIoStatementState<isInput, CHAR>::HandleAbsolutePosition(
     std::int64_t n) {
-  return unit_.HandleAbsolutePosition(n, *this);
+  return unit_.HandleAbsolutePosition(n);
 }
 
 template<bool isInput, typename CHAR>
-bool InternalFormattedIoStatementState<isInput, CHAR>::HandleRelativePosition(
+void InternalFormattedIoStatementState<isInput, CHAR>::HandleRelativePosition(
     std::int64_t n) {
-  return unit_.HandleRelativePosition(n, *this);
+  return unit_.HandleRelativePosition(n);
 }
 
 template<bool isInput, typename CHAR>
@@ -159,7 +159,7 @@ void OpenStatementState::set_path(
 
 int OpenStatementState::EndIoStatement() {
   if (wasExtant_ && status_ != OpenStatus::Old) {
-    Crash("OPEN statement for connected unit must have STATUS='OLD'");
+    SignalError("OPEN statement for connected unit must have STATUS='OLD'");
   }
   unit().OpenUnit(status_, position_, std::move(path_), pathLength_, *this);
   return ExternalIoStatementBase::EndIoStatement();
@@ -240,13 +240,13 @@ bool ExternalIoStatementState<isInput>::AdvanceRecord(int n) {
 }
 
 template<bool isInput>
-bool ExternalIoStatementState<isInput>::HandleAbsolutePosition(std::int64_t n) {
-  return unit().HandleAbsolutePosition(n, *this);
+void ExternalIoStatementState<isInput>::HandleAbsolutePosition(std::int64_t n) {
+  return unit().HandleAbsolutePosition(n);
 }
 
 template<bool isInput>
-bool ExternalIoStatementState<isInput>::HandleRelativePosition(std::int64_t n) {
-  return unit().HandleRelativePosition(n, *this);
+void ExternalIoStatementState<isInput>::HandleRelativePosition(std::int64_t n) {
+  return unit().HandleRelativePosition(n);
 }
 
 template<bool isInput, typename CHAR>
@@ -279,9 +279,8 @@ bool IoStatementState::AdvanceRecord(int n) {
   return std::visit([=](auto &x) { return x.get().AdvanceRecord(n); }, u_);
 }
 
-bool IoStatementState::HandleRelativePosition(std::int64_t n) {
-  return std::visit(
-      [=](auto &x) { return x.get().HandleRelativePosition(n); }, u_);
+void IoStatementState::HandleRelativePosition(std::int64_t n) {
+  return std::visit([=](auto &x) { x.get().HandleRelativePosition(n); }, u_);
 }
 
 int IoStatementState::EndIoStatement() {
@@ -395,8 +394,9 @@ int UnformattedIoStatementState<isInput>::EndIoStatement() {
     } u;
     u.u = unit.furthestPositionInRecord - sizeof u.c;
     // TODO: Convert record length to little-endian on big-endian host?
-    if (!(ext.Emit(u.c, sizeof u.c) && ext.HandleAbsolutePosition(0) &&
-            ext.Emit(u.c, sizeof u.c) && ext.AdvanceRecord())) {
+    if (!(ext.Emit(u.c, sizeof u.c) &&
+            (ext.HandleAbsolutePosition(0), ext.Emit(u.c, sizeof u.c)) &&
+            ext.AdvanceRecord())) {
       return false;
     }
   }
