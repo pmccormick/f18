@@ -88,13 +88,9 @@ std::optional<char32_t> InternalDescriptorUnit<isInput>::NextChar(
         "InternalDescriptorUnit<false>::Next() called for output statement");
     return std::nullopt;
   }
-  if (currentRecordNumber >= endfileRecordNumber.value_or(0)) {
+  if (endfileRecordNumber && currentRecordNumber >= *endfileRecordNumber) {
     handler.SignalEnd();
     return std::nullopt;
-  }
-  if (recordLength.has_value() &&
-      positionInRecord >= static_cast<std::int64_t>(*recordLength)) {
-    return modes.pad ? std::optional<char32_t>{' '} : std::nullopt;
   }
   if (isUTF8) {
     // TODO: UTF-8 decoding

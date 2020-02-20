@@ -147,10 +147,6 @@ std::optional<char32_t> ExternalFileUnit::NextChar(IoErrorHandler &handler) {
   std::size_t chunk{256};  // for stream input
   if (recordLength.has_value()) {
     if (positionInRecord >= *recordLength) {
-      if (modes.pad) {
-        return std::optional<char32_t>{' '};
-      }
-      handler.SignalEor();
       return std::nullopt;
     }
     chunk = *recordLength - positionInRecord;

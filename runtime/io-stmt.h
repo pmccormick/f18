@@ -70,7 +70,7 @@ public:
 
   bool EmitRepeated(char, std::size_t);
   bool EmitField(const char *, std::size_t length, std::size_t width);
-  std::optional<char32_t> NextInField(std::size_t &remaining);
+  std::optional<char32_t> NextInField(std::optional<int> &remaining);
 
 private:
   std::variant<std::reference_wrapper<OpenStatementState>,

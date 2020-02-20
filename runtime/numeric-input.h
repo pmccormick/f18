@@ -17,5 +17,20 @@ namespace Fortran::runtime::io {
 
 bool EditIntegerInput(
     IoStatementState &, const DataEdit &, std::int64_t &, int kind);
+
+template<int binaryPrecision>
+bool EditRealInput(IoStatementState &, const DataEdit &, void *);
+extern template bool EditRealInput<8>(
+    IoStatementState &, const DataEdit &, void *);
+extern template bool EditRealInput<11>(
+    IoStatementState &, const DataEdit &, void *);
+extern template bool EditRealInput<24>(
+    IoStatementState &, const DataEdit &, void *);
+extern template bool EditRealInput<53>(
+    IoStatementState &, const DataEdit &, void *);
+extern template bool EditRealInput<64>(
+    IoStatementState &, const DataEdit &, void *);
+extern template bool EditRealInput<112>(
+    IoStatementState &, const DataEdit &, void *);
 }
 #endif  // FORTRAN_RUNTIME_NUMERIC_INPUT_H_

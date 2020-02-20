@@ -333,14 +333,24 @@ bool IoStatementState::EmitField(
   }
 }
 
-std::optional<char32_t> IoStatementState::NextInField(std::size_t &remaining) {
-  if (remaining > 0) {
-    if (auto next{NextChar()}) {
-      --remaining;
-      HandleRelativePosition(1);
-      return next;
+std::optional<char32_t> IoStatementState::NextInField(
+    std::optional<int> &remaining) {
+  if (remaining && *remaining <= 0) {
+    return std::nullopt;
+  }
+  if (auto next{NextChar()}) {
+    if (remaining) {
+      --*remaining;
     }
-    remaining = 0;
+    HandleRelativePosition(1);
+    return next;
+  }
+  if (remaining) {  // not list-directed or namelist
+    const ConnectionState &connection{GetConnectionState()};
+    if (connection.modes.pad && connection.recordLength &&
+        connection.positionInRecord >= *connection.recordLength) {  // PAD='YES'
+      return std::optional<char32_t>{' '};
+    }
   }
   return std::nullopt;
 }
