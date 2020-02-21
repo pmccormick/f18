@@ -72,9 +72,11 @@ Cookie IONAME(BeginInternalArrayFormattedInput)(const Descriptor &descriptor,
 }
 
 template<bool isInput>
-Cookie BeginInternalFormattedIO(char *internal, std::size_t internalLength,
-    const char *format, std::size_t formatLength, void ** /*scratchArea*/,
-    std::size_t /*scratchBytes*/, const char *sourceFile, int sourceLine) {
+Cookie BeginInternalFormattedIO(
+    std::conditional_t<isInput, const char, char> *internal,
+    std::size_t internalLength, const char *format, std::size_t formatLength,
+    void ** /*scratchArea*/, std::size_t /*scratchBytes*/,
+    const char *sourceFile, int sourceLine) {
   Terminator oom{sourceFile, sourceLine};
   return &New<InternalFormattedIoStatementState<isInput>>{}(oom, internal,
       internalLength, format, formatLength, sourceFile, sourceLine)
@@ -90,7 +92,7 @@ Cookie IONAME(BeginInternalFormattedOutput)(char *internal,
       formatLength, scratchArea, scratchBytes, sourceFile, sourceLine);
 }
 
-Cookie IONAME(BeginInternalFormattedInput)(char *internal,
+Cookie IONAME(BeginInternalFormattedInput)(const char *internal,
     std::size_t internalLength, const char *format, std::size_t formatLength,
     void **scratchArea, std::size_t scratchBytes, const char *sourceFile,
     int sourceLine) {
@@ -681,7 +683,7 @@ bool IONAME(InputInteger64)(Cookie cookie, std::int64_t &n, int kind) {
   IoStatementState &io{*cookie};
   if (!io.get_if<InputStatementState>()) {
     io.GetIoErrorHandler().Crash(
-        "InputInteger64() called for a non-output I/O statement");
+        "InputInteger64() called for a non-input I/O statement");
     return false;
   }
   return EditIntegerInput(io, io.GetNextDataEdit(), n, kind);
@@ -695,6 +697,17 @@ bool IONAME(OutputReal64)(Cookie cookie, double x) {
     return false;
   }
   return RealOutputEditing<53>{io, x}.Edit(io.GetNextDataEdit());
+}
+
+bool IONAME(InputReal64)(Cookie cookie, double &x) {
+  IoStatementState &io{*cookie};
+  if (!io.get_if<InputStatementState>()) {
+    io.GetIoErrorHandler().Crash(
+        "InputReal64() called for a non-input I/O statement");
+    return false;
+  }
+  return EditRealInput<53>(
+      io, io.GetNextDataEdit(), reinterpret_cast<void *>(&x));
 }
 
 bool IONAME(OutputComplex64)(Cookie cookie, double r, double z) {
@@ -791,6 +804,13 @@ bool IONAME(OutputLogical)(Cookie cookie, bool truth) {
     ok &= io.EmitRepeated(' ', std::max(0, edit.width.value_or(1) - 1));
   }
   return ok && io.Emit(truth ? "T" : "F", 1);
+}
+
+void IONAME(GetIoMsg)(Cookie cookie, char *msg, std::size_t length) {
+  IoErrorHandler &handler{cookie->GetIoErrorHandler()};
+  if (handler.GetIoStat()) {  // leave "msg" alone when no error
+    handler.GetIoMsg(msg, length);
+  }
 }
 
 enum Iostat IONAME(EndIoStatement)(Cookie cookie) {

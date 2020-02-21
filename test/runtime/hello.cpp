@@ -10,14 +10,16 @@ using namespace Fortran::runtime::io;
 
 static int failures{0};
 
-static void test(const char *format, const char *expect, std::string &&got) {
+static bool test(const char *format, const char *expect, std::string &&got) {
   std::string want{expect};
   want.resize(got.length(), ' ');
   if (got != want) {
     std::cerr << '\'' << format << "' failed;\n     got '" << got
               << "',\nexpected '" << want << "'\n";
     ++failures;
+    return false;
   }
+  return true;
 }
 
 static void hello() {
@@ -91,6 +93,32 @@ static void realTest(const char *format, double x, const char *expect) {
     ++failures;
   } else {
     test(format, expect, std::string{buffer, sizeof buffer});
+  }
+}
+
+static void realInTest(
+    const char *format, const char *data, std::uint64_t want) {
+  auto cookie{IONAME(BeginInternalFormattedInput)(
+      data, std::strlen(data), format, std::strlen(format))};
+  union {
+    double x;
+    std::uint64_t raw;
+  } u;
+  u.raw = 0;
+  IONAME(EnableHandlers)(cookie, true, true, true, true, true);
+  char iomsg[65];
+  iomsg[0] = '\0';
+  iomsg[sizeof iomsg - 1] = '\0';
+  IONAME(GetIoMsg)(cookie, iomsg, sizeof iomsg - 1);
+  IONAME(InputReal64)(cookie, u.x);
+  if (auto status{IONAME(EndIoStatement)(cookie)}) {
+    std::cerr << '\'' << format << "' failed reading '" << data << "', status "
+              << static_cast<int>(status) << " iomsg '" << iomsg << "'\n";
+    ++failures;
+  } else if (u.raw != want) {
+    std::cerr << '\'' << format << "' failed reading '" << data << "', want 0x"
+              << std::hex << want << ", got 0x" << u.raw << std::dec << '\n';
+    ++failures;
   }
 }
 
@@ -379,6 +407,23 @@ int main() {
       "236903222948165808559332123348274797826204144723168738177180919299881250"
       "4040261841248583680000+306;");
   realTest("(G0,';')", u.d, ".17976931348623157+309;");
+
+  realInTest("(F18.0)", "                 0", 0x0);
+  realInTest("(F18.0)", "                  ", 0x0);
+  realInTest("(F18.0)", "                -0", 0x8000000000000000);
+  realInTest("(F18.0)", "                 1", 0x3ff0000000000000);
+  realInTest("(F18.0)", "              125.", 0x405f400000000000);
+  realInTest("(F18.0)", "              12.5", 0x4029000000000000);
+  realInTest("(F18.0)", "              1.25", 0x3ff4000000000000);
+  realInTest("(F18.0)", "              .125", 0x3fc0000000000000);
+  realInTest("(F18.0)", "               125", 0x405f400000000000);
+  realInTest("(F18.1)", "               125", 0x4029000000000000);
+  realInTest("(F18.2)", "               125", 0x3ff4000000000000);
+  realInTest("(F18.3)", "               125", 0x3fc0000000000000);
+  realInTest("(-1P,F18.0)", "               125", 0x4093880000000000);  // 1250
+  realInTest("(1P,F18.0)", "               125", 0x4029000000000000);  // 12.5
+  realInTest("(BZ,F18.0)", "              125 ", 0x4093880000000000);  // 1250
+  realInTest("(DC,F18.0)", "              12,5", 0x4029000000000000);
 
   if (failures == 0) {
     std::cout << "PASS\n";

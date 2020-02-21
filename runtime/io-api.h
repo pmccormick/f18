@@ -73,7 +73,7 @@ Cookie IONAME(BeginInternalListOutput)(char *internal,
     std::size_t internalLength, void **scratchArea = nullptr,
     std::size_t scratchBytes = 0, const char *sourceFile = nullptr,
     int sourceLine = 0);
-Cookie IONAME(BeginInternalListInput)(char *internal,
+Cookie IONAME(BeginInternalListInput)(const char *internal,
     std::size_t internalLength, void **scratchArea = nullptr,
     std::size_t scratchBytes = 0, const char *sourceFile = nullptr,
     int sourceLine = 0);
@@ -81,7 +81,7 @@ Cookie IONAME(BeginInternalFormattedOutput)(char *internal,
     std::size_t internalLength, const char *format, std::size_t formatLength,
     void **scratchArea = nullptr, std::size_t scratchBytes = 0,
     const char *sourceFile = nullptr, int sourceLine = 0);
-Cookie IONAME(BeginInternalFormattedInput)(char *internal,
+Cookie IONAME(BeginInternalFormattedInput)(const char *internal,
     std::size_t internalLength, const char *format, std::size_t formatLength,
     void **scratchArea = nullptr, std::size_t scratchBytes = 0,
     const char *sourceFile = nullptr, int sourceLine = 0);

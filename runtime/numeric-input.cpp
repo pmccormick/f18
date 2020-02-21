@@ -83,9 +83,6 @@ bool EditIntegerInput(
     value *= base;
     value += digit;
   }
-  if (remaining && *remaining) {
-    io.GetIoErrorHandler().SignalEor();
-  }
   if (negate) {
     value = -value;
   }
@@ -113,17 +110,19 @@ static int ScanRealInput(char *buffer, int bufferSize, IoStatementState &io,
       buffer[got++] = '-';
     }
   }
-  if (!next) {
+  if (!next) {  // empty field means zero
+    if (got < bufferSize) {
+      buffer[got++] = '0';
+    }
     return got;
   }
   if (got < bufferSize) {
-    buffer[got++] = '.';
+    buffer[got++] = '.';  // input field is normalized to a fraction
   }
   char32_t decimal = edit.modes.editingFlags & decimalComma ? ',' : '.';
   auto start{got};
   if ((*next >= 'a' && *next <= 'z') || (*next >= 'A' && *next <= 'Z')) {
     // NaN or infinity - convert to upper case
-    // TODO: "NaN()" & "NaN(...)"
     for (; next &&
          ((*next >= 'a' && *next <= 'z') || (*next >= 'A' && *next <= 'Z'));
          next = io.NextInField(remaining)) {
@@ -133,6 +132,11 @@ static int ScanRealInput(char *buffer, int bufferSize, IoStatementState &io,
         } else {
           buffer[got++] = *next;
         }
+      }
+    }
+    if (next && *next == '(') {  // NaN(...)
+      while (next && *next != ')') {
+        next = io.NextInField(remaining);
       }
     }
     exponent = 0;
@@ -147,16 +151,20 @@ static int ScanRealInput(char *buffer, int bufferSize, IoStatementState &io,
         }
       }
       if (ch == '0' && got == start) {
-        // skip leading zeroes
-      } else if (ch >= '0' || ch <= '9') {
+        // omit leading zeroes
+      } else if (ch >= '0' && ch <= '9') {
         if (got < bufferSize) {
           buffer[got++] = ch;
         }
       } else if (ch == decimal && !decimalPoint) {
+        // the decimal point is *not* copied to the buffer
         decimalPoint = got - start;  // # of digits before the decimal point
       } else {
         break;
       }
+    }
+    if (got == start && got < bufferSize) {
+      buffer[got++] = '0';  // all digits were zeroes
     }
     if (next &&
         (*next == 'e' || *next == 'E' || *next == 'd' || *next == 'D' ||
@@ -194,8 +202,13 @@ static int ScanRealInput(char *buffer, int bufferSize, IoStatementState &io,
     exponent = 0;
     return 0;
   }
-  if (remaining && *remaining) {
-    io.GetIoErrorHandler().SignalEor();
+  if (remaining) {
+    while (next && *next == ' ') {
+      next = io.NextInField(remaining);
+    }
+    if (next) {
+      return 0;  // error: unused nonblank character in fixed-width field
+    }
   }
   return got;
 }
@@ -207,8 +220,15 @@ bool EditRealInput(IoStatementState &io, const DataEdit &edit, void *n) {
   static constexpr int bufferSize{maxDigits + 18};
   char buffer[bufferSize];
   int exponent{0};
-  int got{ScanRealInput(buffer, maxDigits + 1, io, edit, exponent)};
-  // TODO: detect & report invalid input
+  int got{ScanRealInput(buffer, maxDigits + 2, io, edit, exponent)};
+  if (got >= maxDigits + 2) {
+    io.GetIoErrorHandler().Crash("EditRealInput: buffer was too small");
+    return false;
+  }
+  if (got == 0) {
+    io.GetIoErrorHandler().SignalError("Bad REAL input value");
+    return false;
+  }
   bool hadExtra{got > maxDigits};
   if (exponent != 0) {
     got += std::snprintf(&buffer[got], bufferSize - got, "e%d", exponent);
@@ -221,7 +241,7 @@ bool EditRealInput(IoStatementState &io, const DataEdit &edit, void *n) {
     converted.flags = static_cast<enum decimal::ConversionResultFlags>(
         converted.flags | decimal::Inexact);
   }
-  // TODO: raise converted.flags
+  // TODO: raise converted.flags as exceptions?
   *reinterpret_cast<decimal::BinaryFloatingPointNumber<binaryPrecision> *>(n) =
       converted.binary;
   return true;

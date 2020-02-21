@@ -54,7 +54,8 @@ void OpenFile::Open(
     flags |= O_CREAT;
     break;
   }
-  // If we reach this point, we're opening a new file
+  // If we reach this point, we're opening a new file.
+  // TODO: Fortran shouldn't create a new file until the first WRITE.
   if (fd_ >= 0) {
     if (fd_ <= 2) {
       // don't actually close a standard file descriptor, we might need it
