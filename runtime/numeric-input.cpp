@@ -12,11 +12,51 @@
 
 namespace Fortran::runtime::io {
 
+static bool EditBOZInput(IoStatementState &io, const DataEdit &edit, void *n,
+    int base, int totalBitSize) {
+  std::optional<int> remaining;
+  if (edit.width) {
+    remaining = std::max(0, *edit.width);
+  }
+  std::optional<char32_t> next{io.NextInField(remaining)};
+  while (next && *next == ' ') {  // skip leading spaces
+    next = io.NextInField(remaining);
+  }
+  common::UnsignedInt128 value{0};
+  for (; next; next = io.NextInField(remaining)) {
+    char32_t ch{*next};
+    if (ch == ' ') {
+      continue;
+    }
+    int digit{0};
+    if (ch >= '0' && ch <= '1') {
+      digit = ch - '0';
+    } else if (base >= 8 && ch >= '2' && ch <= '7') {
+      digit = ch - '0';
+    } else if (base >= 10 && ch >= '8' && ch <= '9') {
+      digit = ch - '0';
+    } else if (base == 16 && ch >= 'A' && ch <= 'Z') {
+      digit = ch + 10 - 'A';
+    } else if (base == 16 && ch >= 'a' && ch <= 'z') {
+      digit = ch + 10 - 'a';
+    } else {
+      io.GetIoErrorHandler().SignalError(
+          "Bad character '%lc' in B/O/Z input field", ch);
+      return false;
+    }
+    value *= base;
+    value += digit;
+  }
+  // TODO: check for overflow
+  std::memcpy(n, &value, totalBitSize >> 3);
+  return true;
+}
+
 // Returns false if there's a '-' sign
 static bool ScanNumericPrefix(IoStatementState &io, const DataEdit &edit,
     std::optional<char32_t> &next, std::optional<int> &remaining) {
   if (edit.descriptor != DataEdit::ListDirected && edit.width) {
-    remaining = std::max<int>(0, *edit.width);
+    remaining = std::max(0, *edit.width);
   } else {
     // list-directed, namelist, or (nonstandard) 0-width input editing
     remaining.reset();
@@ -36,25 +76,25 @@ static bool ScanNumericPrefix(IoStatementState &io, const DataEdit &edit,
 }
 
 bool EditIntegerInput(
-    IoStatementState &io, const DataEdit &edit, std::int64_t &n, int kind) {
-  std::optional<int> remaining;
-  std::optional<char32_t> next;
-  bool negate{ScanNumericPrefix(io, edit, next, remaining)};
-  common::UnsignedInt128 value;
-  int base{10};
+    IoStatementState &io, const DataEdit &edit, void *n, int kind) {
+  RUNTIME_CHECK(io.GetIoErrorHandler(), kind >= 1 && !(kind & (kind - 1)));
   switch (edit.descriptor) {
   case DataEdit::ListDirected:
   case 'G':
   case 'I': break;
-  case 'B': base = 2; break;
-  case 'O': base = 8; break;
-  case 'Z': base = 16; break;
+  case 'B': return EditBOZInput(io, edit, n, 2, kind << 3);
+  case 'O': return EditBOZInput(io, edit, n, 8, kind << 3);
+  case 'Z': return EditBOZInput(io, edit, n, 16, kind << 3);
   default:
-    io.GetIoErrorHandler().SignalError(IoErrorInFormat,
+    io.GetIoErrorHandler().SignalError(IostatErrorInFormat,
         "Data edit descriptor '%c' may not be used with an INTEGER data item",
         edit.descriptor);
     return false;
   }
+  std::optional<int> remaining;
+  std::optional<char32_t> next;
+  bool negate{ScanNumericPrefix(io, edit, next, remaining)};
+  common::UnsignedInt128 value;
   for (; next; next = io.NextInField(remaining)) {
     char32_t ch{*next};
     if (ch == ' ') {
@@ -65,37 +105,20 @@ bool EditIntegerInput(
       }
     }
     int digit{0};
-    if (ch >= '0' && ch <= '1') {
+    if (ch >= '0' && ch <= '9') {
       digit = ch - '0';
-    } else if (base >= 8 && ch >= '2' && ch <= '7') {
-      digit = ch - '0';
-    } else if (base >= 10 && ch >= '8' && ch <= '9') {
-      digit = ch - '0';
-    } else if (base == 16 && ch >= 'A' && ch <= 'Z') {
-      digit = ch + 10 - 'A';
-    } else if (base == 16 && ch >= 'a' && ch <= 'z') {
-      digit = ch + 10 - 'a';
     } else {
       io.GetIoErrorHandler().SignalError(
           "Bad character '%lc' in INTEGER input field", ch);
       return false;
     }
-    value *= base;
+    value *= 10;
     value += digit;
   }
   if (negate) {
     value = -value;
   }
-  switch (kind) {
-  case 1: reinterpret_cast<std::int8_t &>(n) = value.low(); break;
-  case 2: reinterpret_cast<std::int16_t &>(n) = value.low(); break;
-  case 4: reinterpret_cast<std::int32_t &>(n) = value.low(); break;
-  case 8: reinterpret_cast<std::int64_t &>(n) = value.low(); break;
-  case 16: reinterpret_cast<common::UnsignedInt128 &>(n) = value; break;
-  default:
-    io.GetIoErrorHandler().Crash("EditIntegerInput: bad INTEGER kind %d", kind);
-    return false;
-  }
+  std::memcpy(n, &value, kind);
   return true;
 }
 
@@ -214,7 +237,7 @@ static int ScanRealInput(char *buffer, int bufferSize, IoStatementState &io,
 }
 
 template<int binaryPrecision>
-bool EditRealInput(IoStatementState &io, const DataEdit &edit, void *n) {
+bool EditCommonRealInput(IoStatementState &io, const DataEdit &edit, void *n) {
   static constexpr int maxDigits{
       common::MaxDecimalConversionDigits(binaryPrecision)};
   static constexpr int bufferSize{maxDigits + 18};
@@ -245,6 +268,31 @@ bool EditRealInput(IoStatementState &io, const DataEdit &edit, void *n) {
   *reinterpret_cast<decimal::BinaryFloatingPointNumber<binaryPrecision> *>(n) =
       converted.binary;
   return true;
+}
+
+template<int binaryPrecision>
+bool EditRealInput(IoStatementState &io, const DataEdit &edit, void *n) {
+  switch (edit.descriptor) {
+  case DataEdit::ListDirected:
+  case 'F':
+  case 'E':  // incl. EN, ES, & EX
+  case 'D':
+  case 'G': return EditCommonRealInput<binaryPrecision>(io, edit, n);
+  case 'B':
+    return EditBOZInput(
+        io, edit, n, 2, common::BitsForBinaryPrecision(binaryPrecision));
+  case 'O':
+    return EditBOZInput(
+        io, edit, n, 8, common::BitsForBinaryPrecision(binaryPrecision));
+  case 'Z':
+    return EditBOZInput(
+        io, edit, n, 16, common::BitsForBinaryPrecision(binaryPrecision));
+  default:
+    io.GetIoErrorHandler().SignalError(IostatErrorInFormat,
+        "Data edit descriptor '%c' may not be used for REAL input",
+        edit.descriptor);
+    return false;
+  }
 }
 
 template bool EditRealInput<8>(IoStatementState &, const DataEdit &, void *);

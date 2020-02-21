@@ -64,7 +64,7 @@ bool InternalDescriptorUnit<isInput>::Emit(
     return true;
   }
   if (currentRecordNumber >= endfileRecordNumber.value_or(0)) {
-    handler.SignalError(IoErrorInternalWriteOverrun);
+    handler.SignalError(IostatInternalWriteOverrun);
     return false;
   }
   char *record{descriptor().template Element<char>(at_)};
@@ -72,7 +72,7 @@ bool InternalDescriptorUnit<isInput>::Emit(
       positionInRecord + static_cast<std::int64_t>(bytes))};
   bool ok{true};
   if (furthestAfter > static_cast<std::int64_t>(recordLength.value_or(0))) {
-    handler.SignalError(IoErrorRecordWriteOverrun);
+    handler.SignalError(IostatRecordWriteOverrun);
     furthestAfter = recordLength.value_or(0);
     bytes = std::max(std::int64_t{0}, furthestAfter - positionInRecord);
     ok = false;

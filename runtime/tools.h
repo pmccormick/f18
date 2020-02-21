@@ -27,5 +27,9 @@ OwningPtr<char> SaveDefaultCharacter(
 // or -1 when it has no match.
 int IdentifyValue(
     const char *value, std::size_t length, const char *possibilities[]);
+
+// Truncates or pads as necessary
+void ToFortranDefaultCharacter(
+    char *to, std::size_t toLength, const char *from);
 }
 #endif  // FORTRAN_RUNTIME_TOOLS_H_

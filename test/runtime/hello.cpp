@@ -106,12 +106,13 @@ static void realInTest(
   } u;
   u.raw = 0;
   IONAME(EnableHandlers)(cookie, true, true, true, true, true);
+  IONAME(InputReal64)(cookie, u.x);
   char iomsg[65];
   iomsg[0] = '\0';
   iomsg[sizeof iomsg - 1] = '\0';
   IONAME(GetIoMsg)(cookie, iomsg, sizeof iomsg - 1);
-  IONAME(InputReal64)(cookie, u.x);
-  if (auto status{IONAME(EndIoStatement)(cookie)}) {
+  auto status{IONAME(EndIoStatement)(cookie)};
+  if (status) {
     std::cerr << '\'' << format << "' failed reading '" << data << "', status "
               << static_cast<int>(status) << " iomsg '" << iomsg << "'\n";
     ++failures;

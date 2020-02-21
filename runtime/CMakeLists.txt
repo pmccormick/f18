@@ -16,6 +16,7 @@ add_library(FortranRuntime
   file.cpp
   format.cpp
   internal-unit.cpp
+  iostat.cpp
   io-api.cpp
   io-error.cpp
   io-stmt.cpp

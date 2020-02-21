@@ -15,30 +15,12 @@
 #ifndef FORTRAN_RUNTIME_IO_ERROR_H_
 #define FORTRAN_RUNTIME_IO_ERROR_H_
 
-#include "magic-numbers.h"
+#include "iostat.h"
 #include "memory.h"
 #include "terminator.h"
 #include <cinttypes>
 
 namespace Fortran::runtime::io {
-
-enum IoErrorNumber {
-  // Errors exposed in ISO_Fortran_env or elsewhere as negative values
-  IoErrorEnd = FORTRAN_RUNTIME_IOSTAT_END,
-  IoErrorEor = FORTRAN_RUNTIME_IOSTAT_EOR,
-  IoErrorUnflushable = FORTRAN_RUNTIME_IOSTAT_FLUSH,
-  // Errors exposed in ISO_Fortran_env or elsewhere as positive values
-  // greater than any errno
-  IoErrorInquireInternal = FORTRAN_RUNTIME_IOSTAT_INQUIRE_INTERNAL_UNIT,
-  // Errors not exposed in ISO_Fortran_env
-  IoErrorRecordWriteOverrun = 301,
-  IoErrorRecordReadOverrun,
-  IoErrorInternalWriteOverrun,
-  IoErrorInFormat,
-  IoErrorInKeyword,
-  IoErrorInStatement,
-  IoErrorGeneric,
-};
 
 // See 12.11 in Fortran 2018
 class IoErrorHandler : public Terminator {
@@ -57,7 +39,7 @@ public:
   void SignalError(int iostatOrErrno, const char *msg, ...);
   void SignalError(int iostatOrErrno);
   template<typename... X> void SignalError(const char *msg, X &&... xs) {
-    SignalError(IoErrorGeneric, msg, std::forward<X>(xs)...);
+    SignalError(IostatGenericError, msg, std::forward<X>(xs)...);
   }
 
   void SignalErrno();  // SignalError(errno)

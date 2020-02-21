@@ -33,6 +33,9 @@ public:
   [[noreturn]] void CheckFailed(
       const char *predicate, const char *file, int line) const;
 
+  // For test harnessing - overrides CrashArgs().
+  static void RegisterCrashHandler(void (*)(const char *, va_list &));
+
 private:
   const char *sourceFileName_{nullptr};
   int sourceLine_{0};

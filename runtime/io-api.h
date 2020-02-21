@@ -12,7 +12,7 @@
 #define FORTRAN_RUNTIME_IO_API_H_
 
 #include "entry-names.h"
-#include "magic-numbers.h"
+#include "iostat.h"
 #include <cinttypes>
 #include <cstddef>
 
@@ -281,23 +281,6 @@ bool IONAME(InquirePendingId)(Cookie, std::int64_t, bool &);
 // NEXTREC, NUMBER, POS, RECL, SIZE
 bool IONAME(InquireInteger64)(
     Cookie, const char *specifier, std::int64_t &, int kind = 8);
-
-// The value of IOSTAT= is zero when no error, end-of-record,
-// or end-of-file condition has arisen; errors are positive values.
-// (See 12.11.5 in Fortran 2018 for the complete requirements;
-// these constants must match the values of their corresponding
-// named constants in the predefined module ISO_FORTRAN_ENV, so
-// they're actually defined in another magic-numbers.h header file
-// so that they can be included both here and there.)
-enum Iostat {
-  // Other errors have values >1
-  IostatInquireInternalUnit = FORTRAN_RUNTIME_IOSTAT_INQUIRE_INTERNAL_UNIT,
-  IostatOk = 0,
-  IostatEnd = FORTRAN_RUNTIME_IOSTAT_END,  // end-of-file & no error
-  IostatEor = FORTRAN_RUNTIME_IOSTAT_EOR,  // end-of-record & no error or EOF
-  IostatFlush =
-      FORTRAN_RUNTIME_IOSTAT_FLUSH,  // attempt to FLUSH an unflushable unit
-};
 
 // This function must be called to end an I/O statement, and its
 // cookie value may not be used afterwards unless it is recycled

@@ -57,4 +57,14 @@ int IdentifyValue(
   }
   return -1;
 }
+
+void ToFortranDefaultCharacter(
+    char *to, std::size_t toLength, const char *from) {
+  std::size_t len{std::strlen(from)};
+  std::memcpy(to, from, std::max(toLength, len));
+  if (len < toLength) {
+    std::memset(to + len, ' ', toLength - len);
+  }
+}
+
 }

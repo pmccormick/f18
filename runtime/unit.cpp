@@ -112,7 +112,7 @@ bool ExternalFileUnit::Emit(
   auto furthestAfter{std::max(furthestPositionInRecord,
       positionInRecord + static_cast<std::int64_t>(bytes))};
   if (furthestAfter > recordLength.value_or(furthestAfter)) {
-    handler.SignalError(IoErrorRecordWriteOverrun);
+    handler.SignalError(IostatRecordWriteOverrun);
     return false;
   }
   WriteFrame(offsetInFile, furthestAfter, handler);
@@ -134,7 +134,7 @@ std::optional<char32_t> ExternalFileUnit::NextChar(IoErrorHandler &handler) {
       if (nonAdvancing) {
         handler.SignalEor();
       } else {
-        handler.SignalError(IoErrorRecordReadOverrun);
+        handler.SignalError(IostatRecordReadOverrun);
       }
       return std::nullopt;
     }

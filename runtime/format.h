@@ -123,7 +123,8 @@ private:
   CharType GetNextChar(IoErrorHandler &handler) {
     SkipBlanks();
     if (offset_ >= formatLength_) {
-      handler.SignalError(IoErrorInFormat, "FORMAT missing at least one ')'");
+      handler.SignalError(
+          IostatErrorInFormat, "FORMAT missing at least one ')'");
       return '\n';
     }
     return format_[offset_++];

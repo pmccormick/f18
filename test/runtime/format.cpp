@@ -36,20 +36,11 @@ private:
 };
 
 // Override the runtime's Crash() for testing purposes
-[[noreturn]] void Fortran::runtime::Terminator::Crash(
-    const char *message, ...) const {
-  std::va_list ap;
-  va_start(ap, message);
+[[noreturn]] void CatchCrash(const char *message, va_list &ap) {
   char buffer[1000];
   std::vsnprintf(buffer, sizeof buffer, message, ap);
   va_end(ap);
   throw std::string{buffer};
-}
-// Duplicate the runtime's CheckFailed() to avoid pulling in its own Check()
-[[noreturn]] void Fortran::runtime::Terminator::CheckFailed(
-    const char *predicate, const char *file, int line) const {
-  Crash("Internal error: RUNTIME_CHECK(%s) failed at %s(%d)", predicate, file,
-      line);
 }
 
 bool TestFormatContext::Emit(const char *s, std::size_t len) {
@@ -142,6 +133,7 @@ static void Test(int n, const char *format, Results &&expect, int repeat = 1) {
 }
 
 int main() {
+  Fortran::runtime::Terminator::RegisterCrashHandler(CatchCrash);
   Test(1, "('PI=',F9.7)", Results{"'PI='", "F9.7"});
   Test(1, "(3HPI=F9.7)", Results{"'PI='", "F9.7"});
   Test(1, "(3HPI=/F9.7)", Results{"'PI='", "/", "F9.7"});

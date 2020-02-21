@@ -266,7 +266,7 @@ static bool YesOrNo(const char *keyword, std::size_t length, const char *what,
   case 0: return true;
   case 1: return false;
   default:
-    handler.SignalError(IoErrorInKeyword, "Invalid %s='%.*s'", what,
+    handler.SignalError(IostatErrorInKeyword, "Invalid %s='%.*s'", what,
         static_cast<int>(length), keyword);
     return false;
   }
@@ -293,8 +293,8 @@ bool IONAME(SetBlank)(Cookie cookie, const char *keyword, std::size_t length) {
   case 0: connection.modes.editingFlags &= ~blankZero; return true;
   case 1: connection.modes.editingFlags |= blankZero; return true;
   default:
-    io.GetIoErrorHandler().SignalError(IoErrorInKeyword, "Invalid BLANK='%.*s'",
-        static_cast<int>(length), keyword);
+    io.GetIoErrorHandler().SignalError(IostatErrorInKeyword,
+        "Invalid BLANK='%.*s'", static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -308,7 +308,7 @@ bool IONAME(SetDecimal)(
   case 0: connection.modes.editingFlags |= decimalComma; return true;
   case 1: connection.modes.editingFlags &= ~decimalComma; return true;
   default:
-    io.GetIoErrorHandler().SignalError(IoErrorInKeyword,
+    io.GetIoErrorHandler().SignalError(IostatErrorInKeyword,
         "Invalid DECIMAL='%.*s'", static_cast<int>(length), keyword);
     return false;
   }
@@ -323,8 +323,8 @@ bool IONAME(SetDelim)(Cookie cookie, const char *keyword, std::size_t length) {
   case 1: connection.modes.delim = '"'; return true;
   case 2: connection.modes.delim = '\0'; return true;
   default:
-    io.GetIoErrorHandler().SignalError(IoErrorInKeyword, "Invalid DELIM='%.*s'",
-        static_cast<int>(length), keyword);
+    io.GetIoErrorHandler().SignalError(IostatErrorInKeyword,
+        "Invalid DELIM='%.*s'", static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -391,8 +391,8 @@ bool IONAME(SetRound)(Cookie cookie, const char *keyword, std::size_t length) {
     connection.modes.round = executionEnvironment.defaultOutputRoundingMode;
     return true;
   default:
-    io.GetIoErrorHandler().SignalError(IoErrorInKeyword, "Invalid ROUND='%.*s'",
-        static_cast<int>(length), keyword);
+    io.GetIoErrorHandler().SignalError(IostatErrorInKeyword,
+        "Invalid ROUND='%.*s'", static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -408,8 +408,8 @@ bool IONAME(SetSign)(Cookie cookie, const char *keyword, std::size_t length) {
     connection.modes.editingFlags &= ~signPlus;
     return true;
   default:
-    io.GetIoErrorHandler().SignalError(IoErrorInKeyword, "Invalid SIGN='%.*s'",
-        static_cast<int>(length), keyword);
+    io.GetIoErrorHandler().SignalError(IostatErrorInKeyword,
+        "Invalid SIGN='%.*s'", static_cast<int>(length), keyword);
     return false;
   }
 }
@@ -429,7 +429,7 @@ bool IONAME(SetAccess)(Cookie cookie, const char *keyword, std::size_t length) {
   case 1: access = Access::Direct; break;
   case 2: access = Access::Stream; break;
   default:
-    open->SignalError(IoErrorInKeyword, "Invalid ACCESS='%.*s'",
+    open->SignalError(IostatErrorInKeyword, "Invalid ACCESS='%.*s'",
         static_cast<int>(length), keyword);
   }
   if (access != connection.access) {
@@ -456,7 +456,7 @@ bool IONAME(SetAction)(Cookie cookie, const char *keyword, std::size_t length) {
   case 1: mayRead = false; break;
   case 2: break;
   default:
-    open->SignalError(IoErrorInKeyword, "Invalid ACTION='%.*s'",
+    open->SignalError(IostatErrorInKeyword, "Invalid ACTION='%.*s'",
         static_cast<int>(length), keyword);
     return false;
   }
@@ -484,7 +484,7 @@ bool IONAME(SetAsynchronous)(
   case 0: open->unit().set_mayAsynchronous(true); return true;
   case 1: open->unit().set_mayAsynchronous(false); return true;
   default:
-    open->SignalError(IoErrorInKeyword, "Invalid ASYNCHRONOUS='%.*s'",
+    open->SignalError(IostatErrorInKeyword, "Invalid ASYNCHRONOUS='%.*s'",
         static_cast<int>(length), keyword);
     return false;
   }
@@ -504,7 +504,7 @@ bool IONAME(SetEncoding)(
   case 0: isUTF8 = true; break;
   case 1: isUTF8 = false; break;
   default:
-    open->SignalError(IoErrorInKeyword, "Invalid ENCODING='%.*s'",
+    open->SignalError(IostatErrorInKeyword, "Invalid ENCODING='%.*s'",
         static_cast<int>(length), keyword);
   }
   if (isUTF8 != open->unit().isUTF8) {
@@ -529,7 +529,7 @@ bool IONAME(SetForm)(Cookie cookie, const char *keyword, std::size_t length) {
   case 0: isUnformatted = false; break;
   case 1: isUnformatted = true; break;
   default:
-    open->SignalError(IoErrorInKeyword, "Invalid FORM='%.*s'",
+    open->SignalError(IostatErrorInKeyword, "Invalid FORM='%.*s'",
         static_cast<int>(length), keyword);
   }
   if (isUnformatted != open->unit().isUnformatted) {
@@ -555,7 +555,7 @@ bool IONAME(SetPosition)(
   case 1: open->set_position(Position::Rewind); return true;
   case 2: open->set_position(Position::Append); return true;
   default:
-    io.GetIoErrorHandler().SignalError(IoErrorInKeyword,
+    io.GetIoErrorHandler().SignalError(IostatErrorInKeyword,
         "Invalid POSITION='%.*s'", static_cast<int>(length), keyword);
   }
   return true;
@@ -591,7 +591,7 @@ bool IONAME(SetStatus)(Cookie cookie, const char *keyword, std::size_t length) {
     case 3: open->set_status(OpenStatus::Replace); return true;
     case 4: open->set_status(OpenStatus::Unknown); return true;
     default:
-      io.GetIoErrorHandler().SignalError(IoErrorInKeyword,
+      io.GetIoErrorHandler().SignalError(IostatErrorInKeyword,
           "Invalid STATUS='%.*s'", static_cast<int>(length), keyword);
     }
     return false;
@@ -602,7 +602,7 @@ bool IONAME(SetStatus)(Cookie cookie, const char *keyword, std::size_t length) {
     case 0: close->set_status(CloseStatus::Keep); return true;
     case 1: close->set_status(CloseStatus::Delete); return true;
     default:
-      io.GetIoErrorHandler().SignalError(IoErrorInKeyword,
+      io.GetIoErrorHandler().SignalError(IostatErrorInKeyword,
           "Invalid STATUS='%.*s'", static_cast<int>(length), keyword);
     }
     return false;
@@ -686,7 +686,8 @@ bool IONAME(InputInteger64)(Cookie cookie, std::int64_t &n, int kind) {
         "InputInteger64() called for a non-input I/O statement");
     return false;
   }
-  return EditIntegerInput(io, io.GetNextDataEdit(), n, kind);
+  return EditIntegerInput(
+      io, io.GetNextDataEdit(), reinterpret_cast<void *>(&n), kind);
 }
 
 bool IONAME(OutputReal64)(Cookie cookie, double x) {
@@ -765,7 +766,7 @@ bool IONAME(OutputAscii)(Cookie cookie, const char *x, std::size_t length) {
     // Formatted default CHARACTER output
     DataEdit edit{io.GetNextDataEdit()};
     if (edit.descriptor != 'A' && edit.descriptor != 'G') {
-      io.GetIoErrorHandler().SignalError(IoErrorInFormat,
+      io.GetIoErrorHandler().SignalError(IostatErrorInFormat,
           "Data edit descriptor '%c' may not be used with a CHARACTER data "
           "item",
           edit.descriptor);
@@ -796,7 +797,7 @@ bool IONAME(OutputLogical)(Cookie cookie, bool truth) {
   } else {
     DataEdit edit{io.GetNextDataEdit()};
     if (edit.descriptor != 'L' && edit.descriptor != 'G') {
-      io.GetIoErrorHandler().SignalError(IoErrorInFormat,
+      io.GetIoErrorHandler().SignalError(IostatErrorInFormat,
           "Data edit descriptor '%c' may not be used with a LOGICAL data item",
           edit.descriptor);
       return false;

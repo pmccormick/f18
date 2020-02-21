@@ -15,8 +15,7 @@
 
 namespace Fortran::runtime::io {
 
-bool EditIntegerInput(
-    IoStatementState &, const DataEdit &, std::int64_t &, int kind);
+bool EditIntegerInput(IoStatementState &, const DataEdit &, void *, int kind);
 
 template<int binaryPrecision>
 bool EditRealInput(IoStatementState &, const DataEdit &, void *);

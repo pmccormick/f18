@@ -54,8 +54,8 @@ int FormatControl<CONTEXT>::GetMaxParenthesisNesting(
       case 'H':  // 9HHOLLERITH
         p += repeat;
         if (p >= end) {
-          handler.SignalError(
-              IoErrorInFormat, "Hollerith (%dH) too long in FORMAT", repeat);
+          handler.SignalError(IostatErrorInFormat,
+              "Hollerith (%dH) too long in FORMAT", repeat);
           return maxNesting;
         }
         break;
@@ -71,10 +71,10 @@ int FormatControl<CONTEXT>::GetMaxParenthesisNesting(
   }
   if (quote) {
     handler.SignalError(
-        IoErrorInFormat, "Unbalanced quotation marks in FORMAT string");
+        IostatErrorInFormat, "Unbalanced quotation marks in FORMAT string");
   } else if (nesting) {
     handler.SignalError(
-        IoErrorInFormat, "Unbalanced parentheses in FORMAT string");
+        IostatErrorInFormat, "Unbalanced parentheses in FORMAT string");
   }
   return maxNesting;
 }
@@ -84,7 +84,7 @@ int FormatControl<CONTEXT>::GetIntField(
     IoErrorHandler &handler, CharType firstCh) {
   CharType ch{firstCh ? firstCh : PeekNext()};
   if (ch != '-' && ch != '+' && (ch < '0' || ch > '9')) {
-    handler.SignalError(IoErrorInFormat,
+    handler.SignalError(IostatErrorInFormat,
         "Invalid FORMAT: integer expected at '%c'", static_cast<char>(ch));
     return 0;
   }
@@ -97,7 +97,8 @@ int FormatControl<CONTEXT>::GetIntField(
   while (ch >= '0' && ch <= '9') {
     if (result >
         std::numeric_limits<int>::max() / 10 - (static_cast<int>(ch) - '0')) {
-      handler.SignalError(IoErrorInFormat, "FORMAT integer field out of range");
+      handler.SignalError(
+          IostatErrorInFormat, "FORMAT integer field out of range");
       return result;
     }
     result = 10 * result + ch - '0';
@@ -109,7 +110,8 @@ int FormatControl<CONTEXT>::GetIntField(
     ch = PeekNext();
   }
   if (negate && (result *= -1) > 0) {
-    handler.SignalError(IoErrorInFormat, "FORMAT integer field out of range");
+    handler.SignalError(
+        IostatErrorInFormat, "FORMAT integer field out of range");
   }
   return result;
 }
@@ -186,11 +188,11 @@ static void HandleControl(CONTEXT &context, char ch, char next, int n) {
   default: break;
   }
   if (next) {
-    context.SignalError(
-        IoErrorInFormat, "Unknown '%c%c' edit descriptor in FORMAT", ch, next);
+    context.SignalError(IostatErrorInFormat,
+        "Unknown '%c%c' edit descriptor in FORMAT", ch, next);
   } else {
     context.SignalError(
-        IoErrorInFormat, "Unknown '%c' edit descriptor in FORMAT", ch);
+        IostatErrorInFormat, "Unknown '%c' edit descriptor in FORMAT", ch);
   }
 }
 
@@ -220,14 +222,14 @@ int FormatControl<CONTEXT>::CueUpNextDataEdit(Context &context, bool stop) {
       unlimited = true;
       ch = GetNextChar(context);
       if (ch != '(') {
-        context.SignalError(
-            IoErrorInFormat, "Invalid FORMAT: '*' may appear only before '('");
+        context.SignalError(IostatErrorInFormat,
+            "Invalid FORMAT: '*' may appear only before '('");
         return 0;
       }
     }
     if (ch == '(') {
       if (height_ >= maxHeight_) {
-        context.SignalError(IoErrorInFormat,
+        context.SignalError(IostatErrorInFormat,
             "FORMAT stack overflow: too many nested parentheses");
         return 0;
       }
@@ -245,7 +247,7 @@ int FormatControl<CONTEXT>::CueUpNextDataEdit(Context &context, bool stop) {
       }
       ++height_;
     } else if (height_ == 0) {
-      context.SignalError(IoErrorInFormat, "FORMAT lacks initial '('");
+      context.SignalError(IostatErrorInFormat, "FORMAT lacks initial '('");
       return 0;
     } else if (ch == ')') {
       if (height_ == 1) {
@@ -257,7 +259,7 @@ int FormatControl<CONTEXT>::CueUpNextDataEdit(Context &context, bool stop) {
       if (stack_[height_ - 1].remaining == Iteration::unlimited) {
         offset_ = stack_[height_ - 1].start + 1;
         if (offset_ == unlimitedLoopCheck) {
-          context.SignalError(IoErrorInFormat,
+          context.SignalError(IostatErrorInFormat,
               "Unlimited repetition in FORMAT lacks data edit descriptors");
         }
       } else if (stack_[height_ - 1].remaining-- > 0) {
@@ -273,7 +275,7 @@ int FormatControl<CONTEXT>::CueUpNextDataEdit(Context &context, bool stop) {
         ++offset_;
       }
       if (offset_ >= formatLength_) {
-        context.SignalError(IoErrorInFormat,
+        context.SignalError(IostatErrorInFormat,
             "FORMAT missing closing quote on character literal");
         return 0;
       }
@@ -292,7 +294,7 @@ int FormatControl<CONTEXT>::CueUpNextDataEdit(Context &context, bool stop) {
       // 9HHOLLERITH
       if (!repeat || *repeat < 1 || offset_ + *repeat > formatLength_) {
         context.SignalError(
-            IoErrorInFormat, "Invalid width on Hollerith in FORMAT");
+            IostatErrorInFormat, "Invalid width on Hollerith in FORMAT");
         return 0;
       }
       context.Emit(format_ + offset_, static_cast<std::size_t>(*repeat));
@@ -323,8 +325,8 @@ int FormatControl<CONTEXT>::CueUpNextDataEdit(Context &context, bool stop) {
     } else if (ch == '/') {
       context.AdvanceRecord(repeat && *repeat > 0 ? *repeat : 1);
     } else {
-      context.SignalError(IoErrorInFormat, "Invalid character '%c' in FORMAT",
-          static_cast<char>(ch));
+      context.SignalError(IostatErrorInFormat,
+          "Invalid character '%c' in FORMAT", static_cast<char>(ch));
       return 0;
     }
   }
