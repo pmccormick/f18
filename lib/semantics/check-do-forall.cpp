@@ -763,13 +763,21 @@ private:
           common::visitors{
               [&](const evaluate::Assignment::BoundsSpec &spec) {
                 for (const auto &bound : spec) {
-                  symbols.merge(evaluate::CollectSymbols(bound));
+                  // TODO: this is working around missing std::set::merge in
+                  // some versions of clang that we are building with
+                  // symbols.merge(evaluate::CollectSymbols(bound));
+                  auto boundSymbols{evaluate::CollectSymbols(bound)};
+                  symbols.insert(boundSymbols.begin(), boundSymbols.end());
                 }
               },
               [&](const evaluate::Assignment::BoundsRemapping &remapping) {
                 for (const auto &bounds : remapping) {
-                  symbols.merge(evaluate::CollectSymbols(bounds.first));
-                  symbols.merge(evaluate::CollectSymbols(bounds.second));
+                  // symbols.merge(evaluate::CollectSymbols(bounds.first));
+                  // symbols.merge(evaluate::CollectSymbols(bounds.second));
+                  auto lbSymbols{evaluate::CollectSymbols(bounds.first)};
+                  symbols.insert(lbSymbols.begin(), lbSymbols.end());
+                  auto ubSymbols{evaluate::CollectSymbols(bounds.second)};
+                  symbols.insert(ubSymbols.begin(), ubSymbols.end());
                 }
               },
               [](const auto &) {},
