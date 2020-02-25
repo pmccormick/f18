@@ -72,3 +72,9 @@ subroutine s9
   !ERROR: 'i' is already declared in this scoping unit
   data ((x(i,i),i=1,2),i=1,2)/4*0.0/
 end
+
+module m10
+  integer :: x
+  public :: nl
+  namelist /nl/ x
+end
